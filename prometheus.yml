@@ -1,0 +1,86 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'microservice-platform'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Gateway Service (API Gateway)
+  - job_name: 'gateway-service'
+    static_configs:
+      - targets: ['gateway-service:8000']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # User Service
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:8001']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # Order Service
+  - job_name: 'order-service'
+    static_configs:
+      - targets: ['order-service:8002']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # File Service
+  - job_name: 'file-service'
+    static_configs:
+      - targets: ['file-service:8003']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # Notification Service
+  - job_name: 'notification-service'
+    static_configs:
+      - targets: ['notification-service:8004']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # Audit Log Service
+  - job_name: 'audit-log-service'
+    static_configs:
+      - targets: ['audit-log-service:8005']
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 30s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  # Kafka
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['kafka:9092']
+
+  # PostgreSQL (via postgres_exporter if available)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+
+  # Node Exporter (if running on host)
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['localhost:9100']
+

@@ -1,0 +1,176 @@
+spring:
+  application:
+    name: order-service
+  autoconfigure:
+    exclude: io.opentelemetry.instrumentation.spring.autoconfigure.instrumentation.kafka.KafkaInstrumentationAutoConfiguration
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/order_db}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      retries: 3
+      acks: all
+      properties:
+        enable.idempotence: true
+  data:
+    redis:
+      enabled: ${REDIS_ENABLED:false}
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+rate-limiting:
+  orders:
+    enabled: ${ORDER_RATE_LIMITING_ENABLED:true}
+    capacity: ${ORDER_RATE_LIMIT_CAPACITY:50}
+    refill-tokens: ${ORDER_RATE_LIMIT_REFILL_TOKENS:50}
+    refill-period: ${ORDER_RATE_LIMIT_REFILL_PERIOD:PT1M}
+
+clients:
+  inventory:
+    base-url: ${INVENTORY_BASE_URL:http://inventory-service:8080}
+    reserve-path: ${INVENTORY_RESERVE_PATH:/internal/inventory/reservations}
+    confirm-path: ${INVENTORY_CONFIRM_PATH:/internal/inventory/reservations/{orderId}/confirm}
+    release-path: ${INVENTORY_RELEASE_PATH:/internal/inventory/reservations/{orderId}/release}
+  payment:
+    base-url: ${PAYMENT_BASE_URL:http://payment-service:8090}
+    process-path: ${PAYMENT_PROCESS_PATH:/api/payments}
+  product:
+    base-url: ${PRODUCT_BASE_URL:http://product-service:8080}
+    get-by-id-path: ${PRODUCT_GET_BY_ID_PATH:/internal/products/{id}}
+
+feature:
+  order:
+    enabled: ${FEATURE_ORDER_ENABLED:true}
+  payment:
+    enabled: ${FEATURE_PAYMENT_ENABLED:true}
+  order-product-validation:
+    enabled: ${FEATURE_ORDER_PRODUCT_VALIDATION_ENABLED:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    huynv.orderservice: INFO
+
+outbox:
+  publisher:
+    delay-ms: ${OUTBOX_PUBLISHER_DELAY_MS:1000}
+
+saga:
+  resume:
+    delay-ms: ${SAGA_RESUME_DELAY_MS:5000}
+
+order:
+  saga:
+    enabled: ${ORDER_SAGA_ENABLED:true}
+  outbox:
+    publisher:
+      enabled: ${ORDER_OUTBOX_PUBLISHER_ENABLED:true}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      productService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+      inventoryService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+      paymentService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+  retry:
+    instances:
+      productService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        exponential-max-wait-duration: 2s
+        randomization-factor: 0.2
+      inventoryService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        exponential-max-wait-duration: 2s
+        randomization-factor: 0.2
+      paymentService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        exponential-max-wait-duration: 2s
+        randomization-factor: 0.2
+  bulkhead:
+    instances:
+      productService:
+        max-concurrent-calls: 50
+        max-wait-duration: 0
+      inventoryService:
+        max-concurrent-calls: 50
+        max-wait-duration: 0
+      paymentService:
+        max-concurrent-calls: 30
+        max-wait-duration: 0
+  timelimiter:
+    instances:
+      productService:
+        timeout-duration: 2s
+        cancel-running-future: true
+      inventoryService:
+        timeout-duration: 3s
+        cancel-running-future: true
+      paymentService:
+        timeout-duration: 5s
+        cancel-running-future: true
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes: service.name=${spring.application.name}

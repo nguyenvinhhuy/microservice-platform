@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order.cancelled.v1",
+  "title": "order.cancelled.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "order.cancelled" },
+    "dataSchema": { "const": "order.cancelled.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["orderId", "tenantId", "userId", "status", "timestamp"],
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "integer" },
+        "userId": { "type": "integer" },
+        "status": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

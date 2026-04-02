@@ -1,0 +1,1003 @@
+version: '3.8'
+
+services:
+  # ==================== 1️⃣ FRONTEND ====================
+  angular-fe:
+    container_name: angular-fe
+    build:
+      context: ./angular-fe
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - NODE_ENV=production
+      - API_GATEWAY_URL=http://gateway-service:8000
+      - KEYCLOAK_URL=http://keycloak:8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    depends_on:
+      - gateway-service
+      - keycloak
+
+  # ==================== 2️⃣ IDENTITY & SECURITY ====================
+  keycloak-db:
+    container_name: keycloak-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB:-keycloak}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-keycloak123}
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  keycloak:
+    container_name: keycloak
+    image: keycloak/keycloak:23.0.0
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin123}
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak123
+      KC_HOSTNAME: localhost
+      KC_PROXY: edge
+    ports:
+      - "8180:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - keycloak-db
+
+  # ==================== 3️⃣ SPRING BOOT SERVICES ====================
+
+  # Gateway Service (Port 8000)
+  gateway-service:
+    container_name: gateway-service
+    image: your-registry/gateway-service:latest
+    build:
+      context: ./gateway-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      SERVER_PORT: 8000
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/microservice-platform
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - kafka
+      - keycloak
+
+  # User Service (Port 8001)
+  user-service:
+    container_name: user-service
+    image: your-registry/user-service:latest
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8001
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-db:5432/user_db
+      SPRING_DATASOURCE_USERNAME: user
+      SPRING_DATASOURCE_PASSWORD: ${USER_DB_PASSWORD:-user123}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: 6379
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - user-db
+      - redis
+      - kafka
+
+  # Order Service (Port 8002)
+  order-service:
+    container_name: order-service
+    image: your-registry/order-service:latest
+    build:
+      context: ./order-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8002
+      SPRING_DATASOURCE_URL: jdbc:postgresql://order-db:5432/order_db
+      SPRING_DATASOURCE_USERNAME: order
+      SPRING_DATASOURCE_PASSWORD: ${ORDER_DB_PASSWORD:-order123}
+      SPRING_REDIS_HOST: redis
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      GRPC_SERVER_PORT: 50051
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - order-db
+      - redis
+      - kafka
+
+  # File Service (Port 8003)
+  file-service:
+    container_name: file-service
+    image: your-registry/file-service:latest
+    build:
+      context: ./file-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8003
+      SPRING_DATASOURCE_URL: jdbc:postgresql://file-db:5432/file_db
+      SPRING_DATASOURCE_USERNAME: file
+      SPRING_DATASOURCE_PASSWORD: ${FILE_DB_PASSWORD:-file123}
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - file-db
+      - minio
+      - kafka
+
+  # Notification Service (Port 8004)
+  notification-service:
+    container_name: notification-service
+    image: your-registry/notification-service:latest
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8004
+      SPRING_DATASOURCE_URL: jdbc:postgresql://notification-db:5432/notification_db
+      SPRING_DATASOURCE_USERNAME: notification
+      SPRING_DATASOURCE_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      MAIL_HOST: ${MAIL_HOST:-smtp.gmail.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - notification-db
+      - kafka
+
+  # Audit Log Service (Port 8005)
+  audit-log-service:
+    container_name: audit-log-service
+    image: your-registry/audit-log-service:latest
+    build:
+      context: ./audit-log-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8005
+      SPRING_DATASOURCE_URL: jdbc:postgresql://audit-db:5432/audit_db
+      SPRING_DATASOURCE_USERNAME: audit
+      SPRING_DATASOURCE_PASSWORD: ${AUDIT_DB_PASSWORD:-audit123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - audit-db
+      - kafka
+
+  # Product Service (Port 8006)
+  product-service:
+    container_name: product-service
+    image: your-registry/product-service:latest
+    build:
+      context: ./product-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8006
+      SPRING_DATASOURCE_URL: jdbc:postgresql://product-db:5432/product_db
+      SPRING_DATASOURCE_USERNAME: product
+      SPRING_DATASOURCE_PASSWORD: ${PRODUCT_DB_PASSWORD:-product123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KEYCLOAK_SERVER_URL: http://keycloak:8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - product-db
+      - kafka
+
+  # Payment Service (Port 8007)
+  payment-service:
+    container_name: payment-service
+    image: your-registry/payment-service:latest
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8007
+      SPRING_DATASOURCE_URL: jdbc:postgresql://payment-db:5432/payment_db
+      SPRING_DATASOURCE_USERNAME: payment
+      SPRING_DATASOURCE_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - payment-db
+      - kafka
+
+  # Inventory Service (Port 8008)
+  inventory-service:
+    container_name: inventory-service
+    image: your-registry/inventory-service:latest
+    build:
+      context: ./inventory-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8008
+      SPRING_DATASOURCE_URL: jdbc:postgresql://inventory-db:5432/inventory_db
+      SPRING_DATASOURCE_USERNAME: inventory
+      SPRING_DATASOURCE_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      GRPC_SERVER_PORT: 50052
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8008/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - inventory-db
+      - kafka
+
+  # Product View Service (Port 8010)
+  product-view-service:
+    container_name: product-view-service
+    image: your-registry/product-view-service:latest
+    build:
+      context: ./product-view-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8010
+      DB_URL: jdbc:postgresql://product-view-db:5432/product_view_db
+      DB_USERNAME: product_view
+      DB_PASSWORD: ${PRODUCT_VIEW_DB_PASSWORD:-productview123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - product-view-db
+      - kafka
+
+  # Order View Service (Port 8011)
+  order-view-service:
+    container_name: order-view-service
+    image: your-registry/order-view-service:latest
+    build:
+      context: ./order-view-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8011
+      DB_URL: jdbc:postgresql://order-view-db:5432/order_view_db
+      DB_USERNAME: order_view
+      DB_PASSWORD: ${ORDER_VIEW_DB_PASSWORD:-orderview123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - order-view-db
+      - kafka
+
+  # DLQ Replayer Service (Port 8012)
+  dlq-replayer-service:
+    container_name: dlq-replayer-service
+    image: your-registry/dlq-replayer-service:latest
+    build:
+      context: ./dlq-replayer-service
+      dockerfile: Dockerfile
+    environment:
+      SERVER_PORT: 8012
+      DB_URL: jdbc:postgresql://dlq-replayer-db:5432/dlq_replayer_db
+      DB_USERNAME: dlq_replayer
+      DB_PASSWORD: ${DLQ_REPLAYER_DB_PASSWORD:-dlqreplayer123}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      DLQ_TOPIC_PATTERN: ".*\\.events\\.dlq"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8012/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - dlq-replayer-db
+      - kafka
+
+  # ==================== 3️⃣ DATABASES (Per Service) ====================
+  gateway-db:
+    container_name: gateway-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gateway_db
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: ${GATEWAY_DB_PASSWORD:-gateway123}
+    ports:
+      - "5434:5432"
+    volumes:
+      - gateway_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  user-db:
+    container_name: user-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: ${USER_DB_PASSWORD:-user123}
+    ports:
+      - "5435:5432"
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  order-db:
+    container_name: order-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: order
+      POSTGRES_PASSWORD: ${ORDER_DB_PASSWORD:-order123}
+    ports:
+      - "5436:5432"
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  file-db:
+    container_name: file-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: file_db
+      POSTGRES_USER: file
+      POSTGRES_PASSWORD: ${FILE_DB_PASSWORD:-file123}
+    ports:
+      - "5437:5432"
+    volumes:
+      - file_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U file"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  notification-db:
+    container_name: notification-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notification_db
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD:-notification123}
+    ports:
+      - "5438:5432"
+    volumes:
+      - notification_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  audit-db:
+    container_name: audit-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: audit_db
+      POSTGRES_USER: audit
+      POSTGRES_PASSWORD: ${AUDIT_DB_PASSWORD:-audit123}
+    ports:
+      - "5439:5432"
+    volumes:
+      - audit_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audit"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  product-db:
+    container_name: product-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: product
+      POSTGRES_PASSWORD: ${PRODUCT_DB_PASSWORD:-product123}
+    ports:
+      - "5440:5432"
+    volumes:
+      - product_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  payment-db:
+    container_name: payment-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment123}
+    ports:
+      - "5441:5432"
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  inventory-db:
+    container_name: inventory-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: inventory_db
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: ${INVENTORY_DB_PASSWORD:-inventory123}
+    ports:
+      - "5442:5432"
+    volumes:
+      - inventory_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  product-view-db:
+    container_name: product-view-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: product_view_db
+      POSTGRES_USER: product_view
+      POSTGRES_PASSWORD: ${PRODUCT_VIEW_DB_PASSWORD:-productview123}
+    ports:
+      - "5443:5432"
+    volumes:
+      - product_view_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U product_view"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  order-view-db:
+    container_name: order-view-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: order_view_db
+      POSTGRES_USER: order_view
+      POSTGRES_PASSWORD: ${ORDER_VIEW_DB_PASSWORD:-orderview123}
+    ports:
+      - "5444:5432"
+    volumes:
+      - order_view_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_view"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  dlq-replayer-db:
+    container_name: dlq-replayer-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: dlq_replayer_db
+      POSTGRES_USER: dlq_replayer
+      POSTGRES_PASSWORD: ${DLQ_REPLAYER_DB_PASSWORD:-dlqreplayer123}
+    ports:
+      - "5445:5432"
+    volumes:
+      - dlq_replayer_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dlq_replayer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ==================== 4️⃣ MESSAGING & STREAMING ====================
+  zookeeper:
+    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+      - zookeeper_logs:/var/lib/zookeeper/log
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  kafka:
+    container_name: kafka
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  schema-registry:
+    container_name: schema-registry
+    image: apicurio/apicurio-registry-mem:2.5.11.Final
+    environment:
+      QUARKUS_HTTP_PORT: 8081
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/apis/registry/v2/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ==================== 5️⃣ CACHE & STORAGE ====================
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  minio:
+    container_name: minio
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: minio server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ==================== 6️⃣ DEVOPS & CI/CD ====================
+  docker-registry:
+    container_name: docker-registry
+    image: registry:2.8.3
+    ports:
+      - "5000:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  jenkins:
+    container_name: jenkins
+    image: jenkins/jenkins:lts-jdk17-alpine
+    ports:
+      - "8088:8080"
+      - "50000:50000"
+    environment:
+      JENKINS_OPTS: "--httpPort=8080"
+      JAVA_OPTS: "-Xmx512m -Xms256m"
+    volumes:
+      - jenkins_data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/local/bin/docker:/usr/local/bin/docker
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ==================== 7️⃣ OBSERVABILITY (Optional) ====================
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin123}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  # Keycloak
+  keycloak_db_data:
+    driver: local
+
+  # Service Databases
+  gateway_db_data:
+    driver: local
+  user_db_data:
+    driver: local
+  order_db_data:
+    driver: local
+  file_db_data:
+    driver: local
+  notification_db_data:
+    driver: local
+  audit_db_data:
+    driver: local
+  product_db_data:
+    driver: local
+  payment_db_data:
+    driver: local
+  inventory_db_data:
+    driver: local
+  product_view_db_data:
+    driver: local
+  order_view_db_data:
+    driver: local
+  dlq_replayer_db_data:
+    driver: local
+
+  # Messaging
+  kafka_data:
+    driver: local
+  zookeeper_data:
+    driver: local
+  zookeeper_logs:
+    driver: local
+  # Cache & Storage
+  redis_data:
+    driver: local
+  minio_data:
+    driver: local
+
+  # DevOps
+  docker-registry_data:
+    driver: local
+  jenkins_data:
+    driver: local
+
+  # Observability
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

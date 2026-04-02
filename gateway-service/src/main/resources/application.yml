@@ -1,0 +1,263 @@
+spring:
+  application:
+    name: gateway-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/microservice-platform}
+  codec:
+    max-in-memory-size: ${GATEWAY_CODEC_MAX_IN_MEMORY_SIZE:2MB}
+  redis:
+    host: ${SPRING_REDIS_HOST:localhost}
+    port: ${SPRING_REDIS_PORT:6379}
+    password: ${SPRING_REDIS_PASSWORD:}
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: ${GATEWAY_CONNECT_TIMEOUT_MS:2000}
+        response-timeout: ${GATEWAY_RESPONSE_TIMEOUT:5s}
+      default-filters:
+        - name: RequestRateLimiter
+          args:
+            redis-rate-limiter.replenishRate: ${GATEWAY_RATE_LIMIT_REPLENISH_RATE:50}
+            redis-rate-limiter.burstCapacity: ${GATEWAY_RATE_LIMIT_BURST_CAPACITY:100}
+            key-resolver: "#{@tenantUserRouteKeyResolver}"
+      routes:
+        - id: user-service
+          uri: ${USER_SERVICE_URL:http://user-service:8001}
+          predicates:
+            - Path=/api/users/**,/api/users
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: user-service
+                fallbackUri: forward:/__gateway/fallback/user-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: order-service
+          uri: ${ORDER_SERVICE_URL:http://order-service:8002}
+          predicates:
+            - Path=/api/orders/**,/api/orders
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: order-service
+                fallbackUri: forward:/__gateway/fallback/order-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: file-service
+          uri: ${FILE_SERVICE_URL:http://file-service:8003}
+          predicates:
+            - Path=/api/files/**,/api/files
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: file-service
+                fallbackUri: forward:/__gateway/fallback/file-service
+        - id: notification-service
+          uri: ${NOTIFICATION_SERVICE_URL:http://notification-service:8004}
+          predicates:
+            - Path=/api/notifications/**,/api/notifications
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: notification-service
+                fallbackUri: forward:/__gateway/fallback/notification-service
+        - id: audit-log-service
+          uri: ${AUDIT_LOG_SERVICE_URL:http://audit-log-service:8005}
+          predicates:
+            - Path=/api/audit/**,/api/audit
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: audit-log-service
+                fallbackUri: forward:/__gateway/fallback/audit-log-service
+        - id: product-service
+          uri: ${PRODUCT_SERVICE_URL:http://product-service:8006}
+          predicates:
+            - Path=/api/products/**,/api/products
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: product-service
+                fallbackUri: forward:/__gateway/fallback/product-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: payment-service
+          uri: ${PAYMENT_SERVICE_URL:http://payment-service:8007}
+          predicates:
+            - Path=/api/payments/**,/api/payments
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: payment-service
+                fallbackUri: forward:/__gateway/fallback/payment-service
+        - id: inventory-service
+          uri: ${INVENTORY_SERVICE_URL:http://inventory-service:8008}
+          predicates:
+            - Path=/api/inventory/**,/api/inventory
+          filters:
+            - StripPrefix=1
+            - name: CircuitBreaker
+              args:
+                name: inventory-service
+                fallbackUri: forward:/__gateway/fallback/inventory-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: product-view-service
+          uri: ${PRODUCT_VIEW_SERVICE_URL:http://product-view-service:8010}
+          predicates:
+            - Path=/api/views/products/**,/api/views/products
+          filters:
+            - StripPrefix=2
+            - name: CircuitBreaker
+              args:
+                name: product-view-service
+                fallbackUri: forward:/__gateway/fallback/product-view-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: order-view-service
+          uri: ${ORDER_VIEW_SERVICE_URL:http://order-view-service:8011}
+          predicates:
+            - Path=/api/views/orders/**,/api/views/orders
+          filters:
+            - StripPrefix=2
+            - name: CircuitBreaker
+              args:
+                name: order-view-service
+                fallbackUri: forward:/__gateway/fallback/order-view-service
+            - name: Retry
+              args:
+                retries: ${GATEWAY_IDEMPOTENT_RETRY_COUNT:2}
+                methods: GET,HEAD
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT,SERVICE_UNAVAILABLE
+                backoff:
+                  firstBackoff: ${GATEWAY_IDEMPOTENT_RETRY_FIRST_BACKOFF:50ms}
+                  maxBackoff: ${GATEWAY_IDEMPOTENT_RETRY_MAX_BACKOFF:500ms}
+                  factor: 2
+                  basedOnPreviousValue: true
+        - id: dlq-replayer-service
+          uri: ${DLQ_REPLAYER_SERVICE_URL:http://dlq-replayer-service:8012}
+          predicates:
+            - Path=/api/admin/dlq/**,/api/admin/dlq
+          filters:
+            - StripPrefix=2
+            - name: CircuitBreaker
+              args:
+                name: dlq-replayer-service
+                fallbackUri: forward:/__gateway/fallback/dlq-replayer-service
+
+server:
+  port: ${SERVER_PORT:8000}
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:framework}
+  max-http-request-header-size: ${GATEWAY_MAX_REQUEST_HEADER_SIZE:16KB}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.cloud.gateway: INFO
+
+gateway:
+  security:
+    require-https: ${GATEWAY_REQUIRE_HTTPS:false}
+  request:
+    max-bytes: ${GATEWAY_MAX_REQUEST_BYTES:10485760}
+    timeout: ${GATEWAY_REQUEST_TIMEOUT:10s}
+  cors:
+    allowed-origins: ${GATEWAY_CORS_ALLOWED_ORIGINS:*}
+
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 50
+        minimumNumberOfCalls: 20
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 10
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+    instances:
+      user-service:
+        baseConfig: default
+      order-service:
+        baseConfig: default
+      file-service:
+        baseConfig: default
+      notification-service:
+        baseConfig: default
+      audit-log-service:
+        baseConfig: default
+      product-service:
+        baseConfig: default
+      payment-service:
+        baseConfig: default
+      inventory-service:
+        baseConfig: default
+      product-view-service:
+        baseConfig: default
+      order-view-service:
+        baseConfig: default
+      dlq-replayer-service:
+        baseConfig: default

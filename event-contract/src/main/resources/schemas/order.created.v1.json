@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "order.created.v1",
+  "title": "order.created.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "order.created" },
+    "dataSchema": { "const": "order.created.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["orderId", "tenantId", "userId", "status", "timestamp"],
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "integer" },
+        "userId": { "type": "integer" },
+        "status": { "type": "string", "minLength": 1 },
+        "totalAmount": { "type": ["number", "null"] },
+        "currency": { "type": ["string", "null"] },
+        "timestamp": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

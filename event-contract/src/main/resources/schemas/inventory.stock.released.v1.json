@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inventory.stock.released.v1",
+  "title": "inventory.stock.released.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "inventory.stock.released" },
+    "dataSchema": { "const": "inventory.stock.released.v1" },
+    "data": { "type": "object", "additionalProperties": true }
+  }
+}

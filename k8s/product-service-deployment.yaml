@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  labels:
+    app: product-service
+spec:
+  replicas: 2 # Start with at least 2 replicas for High Availability
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+    spec:
+      containers:
+        - name: product-service
+          image: your-registry/product-service:latest # IMPORTANT: Replace with your actual image path
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: product-service-config # For non-sensitive configurations
+            - secretRef:
+                name: product-service-secrets # For sensitive data like passwords
+          resources:
+            requests: # Minimum resources required for the Pod to be scheduled
+              cpu: "250m" # 0.25 CPU core
+              memory: "512Mi" # 512 Megabytes
+            limits: # Maximum resources the Pod can consume
+              cpu: "1000m" # 1 CPU core
+              memory: "1Gi" # 1 Gigabyte
+          livenessProbe: # Checks if the application is alive; restarts the Pod on failure
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 60 # Wait 60s before the first probe
+            periodSeconds: 10 # Probe every 10s
+            timeoutSeconds: 5 # Probe timeout after 5s
+            failureThreshold: 3 # Restart after 3 consecutive failures
+          readinessProbe: # Checks if the application is ready to receive traffic; removes from service endpoints on failure
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 30 # Wait 30s before the first probe
+            periodSeconds: 10 # Probe every 10s
+            timeoutSeconds: 5 # Probe timeout after 5s
+            failureThreshold: 3 # Stop sending traffic after 3 consecutive failures
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"] # Wait 10s for graceful shutdown

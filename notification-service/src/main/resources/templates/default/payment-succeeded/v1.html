@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Payment Succeeded</title>
+</head>
+<body>
+<h2>Payment Succeeded</h2>
+<p th:if="${orderId != null}">
+    Payment for order <strong th:text="${orderId}">ORDER_ID</strong> succeeded.
+</p>
+<p th:if="${transactionId != null}">
+    Transaction: <span th:text="${transactionId}">TX</span>
+</p>
+</body>
+</html>
+

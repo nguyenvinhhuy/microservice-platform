@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payment.processing.v1",
+  "title": "payment.processing.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "payment.processing" },
+    "dataSchema": { "const": "payment.processing.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["orderId", "paymentId", "tenantId"],
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1 },
+        "paymentId": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "integer" }
+      }
+    }
+  }
+}

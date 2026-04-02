@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inventory.stock.reserved.v1",
+  "title": "inventory.stock.reserved.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "inventory.stock.reserved" },
+    "dataSchema": { "const": "inventory.stock.reserved.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["orderId", "tenantId", "amount", "currency", "paymentProvider", "idempotencyKey", "items"],
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "integer" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "minLength": 1 },
+        "paymentProvider": { "type": "string", "minLength": 1 },
+        "idempotencyKey": { "type": "string", "minLength": 1 },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["productId", "quantity"],
+            "properties": {
+              "productId": { "type": "integer" },
+              "quantity": { "type": "integer" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

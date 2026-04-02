@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.platform</groupId>
+    <artifactId>microservice-platform</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+
+    <name>microservice-platform</name>
+    <description>Build aggregator for shared libraries and core e-commerce services.</description>
+
+    <modules>
+        <module>event-contract</module>
+        <module>event-infra</module>
+        <module>order-service</module>
+        <module>product-service</module>
+        <module>inventory-service</module>
+        <module>payment-service</module>
+        <module>notification-service</module>
+        <module>product-view-service</module>
+        <module>order-view-service</module>
+        <module>dlq-replayer-service</module>
+        <module>gateway-service</module>
+    </modules>
+</project>
+
+

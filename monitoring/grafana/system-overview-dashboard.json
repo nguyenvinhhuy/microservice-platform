@@ -1,0 +1,81 @@
+{
+  "uid": "system-overview",
+  "title": "System Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "service",
+        "label": "Service",
+        "datasource": "${DS_PROMETHEUS}",
+        "refresh": 1,
+        "query": "label_values(outbox_backlog_size, service)",
+        "includeAll": true,
+        "multi": true,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Orders Created (rate)",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(orders_created_total[5m]))",
+          "legendFormat": "orders_created_total"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Orders Failed (rate)",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(orders_failed_total[5m]))",
+          "legendFormat": "orders_failed_total"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox Backlog Size",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(outbox_backlog_size{service=~\"$service\"}) by (service)",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Kafka Consumer Lag",
+      "datasource": "${DS_PROMETHEUS}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "kafka_consumer_lag",
+          "legendFormat": "kafka_consumer_lag"
+        }
+      ]
+    }
+  ]
+}
+

@@ -1,0 +1,243 @@
+spring:
+  application:
+    name: notification-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://keycloak:8080/realms/microservice-platform}
+  autoconfigure:
+    exclude: io.opentelemetry.instrumentation.spring.autoconfigure.instrumentation.kafka.KafkaInstrumentationAutoConfiguration
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/notification_db}
+    username: ${DB_USERNAME:user}
+    password: ${DB_PASSWORD:password}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${NOTIFICATION_KAFKA_GROUP_ID:notification-service}
+      enable-auto-commit: false
+      auto-offset-reset: ${KAFKA_AUTO_OFFSET_RESET:latest}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+
+notification:
+  dlq:
+    maxReplayAttempts: ${NOTIFICATION_DLQ_MAX_REPLAY_ATTEMPTS:5}
+    replay:
+      enabled: ${NOTIFICATION_DLQ_REPLAY_ENABLED:false}
+  dlq-replay:
+    enabled: ${NOTIFICATION_DLQ_REPLAY_ENABLED:false}
+    group-id: ${NOTIFICATION_DLQ_REPLAY_GROUP_ID:notification-dlq-replay}
+  dispatch:
+    enabled: ${NOTIFICATION_DISPATCH_ENABLED:true}
+  kafka:
+    order-topic: ${NOTIFICATION_ORDER_TOPIC:order.events}
+    payment-topic: ${NOTIFICATION_PAYMENT_TOPIC:payment.events}
+    events-topic: ${NOTIFICATION_EVENTS_TOPIC:notification.events}
+    retry-1m-topic: ${NOTIFICATION_RETRY_1M_TOPIC:notification.retry.1m}
+    retry-5m-topic: ${NOTIFICATION_RETRY_5M_TOPIC:notification.retry.5m}
+    retry-30m-topic: ${NOTIFICATION_RETRY_30M_TOPIC:notification.retry.30m}
+    dlq-topic: ${NOTIFICATION_DLQ_TOPIC:notification.dlq}
+    group-id: ${NOTIFICATION_KAFKA_GROUP_ID:notification-service}
+    consumer-enabled: ${NOTIFICATION_CONSUMER_ENABLED:true}
+    listener-concurrency: ${NOTIFICATION_KAFKA_LISTENER_CONCURRENCY:6}
+    lag-monitor:
+      fixed-delay-ms: ${NOTIFICATION_KAFKA_LAG_MONITOR_DELAY_MS:10000}
+      warn-threshold: ${NOTIFICATION_KAFKA_LAG_WARN_THRESHOLD:10000}
+  dispatcher:
+    enabled: ${NOTIFICATION_DISPATCHER_ENABLED:true}
+    dispatcher-group-id: ${NOTIFICATION_DISPATCHER_GROUP_ID:notification-dispatcher}
+    high-topic: ${NOTIFICATION_HIGH_TOPIC:notification.high}
+    normal-topic: ${NOTIFICATION_NORMAL_TOPIC:notification.normal}
+    low-topic: ${NOTIFICATION_LOW_TOPIC:notification.low}
+    priority-weights:
+      high: ${NOTIFICATION_DISPATCHER_HIGH_WEIGHT:5}
+      normal: ${NOTIFICATION_DISPATCHER_NORMAL_WEIGHT:3}
+      low: ${NOTIFICATION_DISPATCHER_LOW_WEIGHT:1}
+    email-topic: ${NOTIFICATION_EMAIL_TOPIC:notification.email}
+    sms-topic: ${NOTIFICATION_SMS_TOPIC:notification.sms}
+    push-topic: ${NOTIFICATION_PUSH_TOPIC:notification.push}
+    email-worker-group-id: ${NOTIFICATION_EMAIL_WORKER_GROUP_ID:notification-email-worker}
+    sms-worker-group-id: ${NOTIFICATION_SMS_WORKER_GROUP_ID:notification-sms-worker}
+    push-worker-group-id: ${NOTIFICATION_PUSH_WORKER_GROUP_ID:notification-push-worker}
+  workers:
+    email-pool-size: ${NOTIFICATION_EMAIL_WORKER_POOL_SIZE:8}
+    email-queue-size: ${NOTIFICATION_EMAIL_WORKER_QUEUE_SIZE:1000}
+    sms-pool-size: ${NOTIFICATION_SMS_WORKER_POOL_SIZE:4}
+    sms-queue-size: ${NOTIFICATION_SMS_WORKER_QUEUE_SIZE:500}
+    push-pool-size: ${NOTIFICATION_PUSH_WORKER_POOL_SIZE:4}
+    push-queue-size: ${NOTIFICATION_PUSH_WORKER_QUEUE_SIZE:500}
+  retry:
+    max-attempts: ${NOTIFICATION_RETRY_MAX_ATTEMPTS:5}
+    initial-interval-ms: ${NOTIFICATION_RETRY_INITIAL_INTERVAL_MS:250}
+    multiplier: ${NOTIFICATION_RETRY_MULTIPLIER:2.0}
+    max-interval-ms: ${NOTIFICATION_RETRY_MAX_INTERVAL_MS:5000}
+  outbox:
+    publisher:
+      enabled: ${NOTIFICATION_OUTBOX_PUBLISHER_ENABLED:true}
+      batch-size: ${NOTIFICATION_OUTBOX_PUBLISHER_BATCH_SIZE:500}
+      fixed-delay-ms: ${NOTIFICATION_OUTBOX_PUBLISHER_FIXED_DELAY_MS:250}
+      send-timeout-ms: ${NOTIFICATION_OUTBOX_PUBLISHER_SEND_TIMEOUT_MS:10000}
+      max-inflight: ${NOTIFICATION_OUTBOX_PUBLISHER_MAX_INFLIGHT:2000}
+      processing-timeout-ms: ${NOTIFICATION_OUTBOX_PUBLISHER_PROCESSING_TIMEOUT_MS:60000}
+  integrations:
+    order-view-base-url: ${ORDER_VIEW_BASE_URL:http://order-view-service:8087}
+    user-service-base-url: ${USER_SERVICE_BASE_URL:http://user-service:8090}
+    connect-timeout-ms: ${NOTIFICATION_INTEGRATIONS_CONNECT_TIMEOUT_MS:500}
+    read-timeout-ms: ${NOTIFICATION_INTEGRATIONS_READ_TIMEOUT_MS:2000}
+  synthetic-contacts:
+    enabled: ${NOTIFICATION_SYNTHETIC_CONTACTS_ENABLED:false}
+  redis-cache:
+    enabled: ${NOTIFICATION_REDIS_CACHE_ENABLED:true}
+    contact-ttl-seconds: ${NOTIFICATION_CONTACT_TTL_SECONDS:900}
+  rate-limits:
+    email-per-second: ${NOTIFICATION_EMAIL_RATE_PER_SECOND:50}
+    email-burst: ${NOTIFICATION_EMAIL_RATE_BURST:50}
+    sms-per-second: ${NOTIFICATION_SMS_RATE_PER_SECOND:20}
+    sms-burst: ${NOTIFICATION_SMS_RATE_BURST:20}
+    push-per-second: ${NOTIFICATION_PUSH_RATE_PER_SECOND:100}
+    push-burst: ${NOTIFICATION_PUSH_RATE_BURST:100}
+    fail-open-on-error: ${NOTIFICATION_RATE_LIMIT_FAIL_OPEN_ON_ERROR:false}
+  templates:
+    default-tenant-folder: ${NOTIFICATION_TEMPLATE_DEFAULT_TENANT_FOLDER:default}
+    default-version: ${NOTIFICATION_TEMPLATE_DEFAULT_VERSION:v1}
+  channels:
+    email-enabled: ${NOTIFICATION_CHANNEL_EMAIL_ENABLED:true}
+    sms-enabled: ${NOTIFICATION_CHANNEL_SMS_ENABLED:false}
+    push-enabled: ${NOTIFICATION_CHANNEL_PUSH_ENABLED:false}
+  email:
+    enabled: ${NOTIFICATION_EMAIL_ENABLED:true}
+    smtp-enabled: ${NOTIFICATION_EMAIL_SMTP_ENABLED:false}
+    from-address: ${NOTIFICATION_EMAIL_FROM_ADDRESS:no-reply@platform.local}
+  sms:
+    enabled: ${NOTIFICATION_SMS_ENABLED:true}
+  push:
+    enabled: ${NOTIFICATION_PUSH_ENABLED:true}
+
+provider:
+  email:
+    timeout: ${PROVIDER_EMAIL_TIMEOUT:3s}
+  sms:
+    timeout: ${PROVIDER_SMS_TIMEOUT:3s}
+  push:
+    timeout: ${PROVIDER_PUSH_TIMEOUT:3s}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+server:
+  port: ${SERVER_PORT:8004}
+
+logging:
+  level:
+    root: INFO
+    huynv.notificationservice: INFO
+
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
+  resource:
+    attributes: service.name=${spring.application.name}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      emailProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 5
+      smsProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 5
+      pushProvider:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 5
+      orderViewService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+      userService:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+  retry:
+    instances:
+      orderViewService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        exponential-max-wait-duration: 2s
+        randomization-factor: 0.2
+      userService:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2.0
+        exponential-max-wait-duration: 2s
+        randomization-factor: 0.2
+  bulkhead:
+    instances:
+      orderViewService:
+        max-concurrent-calls: 50
+        max-wait-duration: 0
+      userService:
+        max-concurrent-calls: 50
+        max-wait-duration: 0
+  timelimiter:
+    instances:
+      orderViewService:
+        timeout-duration: 2s
+        cancel-running-future: true
+      userService:
+        timeout-duration: 2s
+        cancel-running-future: true

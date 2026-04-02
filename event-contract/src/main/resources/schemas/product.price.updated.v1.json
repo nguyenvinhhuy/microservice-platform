@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "product.price.updated.v1",
+  "title": "product.price.updated.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "product.price.updated" },
+    "dataSchema": { "const": "product.price.updated.v1" },
+    "data": { "type": "object", "additionalProperties": true }
+  }
+}

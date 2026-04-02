@@ -1,0 +1,68 @@
+groups:
+  - name: platform-alerts
+    rules:
+      - alert: HighOrderFailureRate
+        expr: |
+          (
+            sum(rate(orders_failed_total[5m]))
+            /
+            clamp_min(sum(rate(orders_created_total[5m])), 1)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High order failure rate"
+          description: "Order failure ratio is above 5% over 10 minutes."
+
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumer_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer lag high"
+          description: "Kafka consumer lag is above 1000 for 5 minutes."
+
+      - alert: OutboxBacklogHigh
+        expr: outbox_backlog_size > 500
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog high"
+          description: "Outbox backlog size is above 500 for 10 minutes."
+
+      - alert: OutboxOldestEventAgeHigh
+        expr: outbox_oldest_event_age > 300
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox oldest event age high"
+          description: "Oldest outbox event age is above 300 seconds for 10 minutes."
+
+      - alert: InventoryReservationFailureSpike
+        expr: |
+          sum(rate(inventory_reservation_total{status="failed"}[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Inventory reservation failures spiking"
+          description: "Inventory reservation failures are above 5/s for 10 minutes."
+
+      - alert: PaymentLatencyHigh
+        expr: |
+          (
+            rate(payment_latency_seconds_sum[5m])
+            /
+            clamp_min(rate(payment_latency_seconds_count[5m]), 1)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Payment latency high"
+          description: "Average payment latency is above 2 seconds over 10 minutes."
+

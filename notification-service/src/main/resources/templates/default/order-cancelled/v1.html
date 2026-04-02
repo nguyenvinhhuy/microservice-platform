@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Order Cancelled</title>
+</head>
+<body>
+<h2>Order Cancelled</h2>
+<p th:if="${orderId != null}">
+    Your order <strong th:text="${orderId}">ORDER_ID</strong> has been cancelled.
+</p>
+<p th:if="${timestamp != null}">
+    Cancelled at: <span th:text="${timestamp}">TIMESTAMP</span>
+</p>
+</body>
+</html>
+

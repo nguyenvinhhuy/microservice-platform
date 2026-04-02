@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payment.completed.v1",
+  "title": "payment.completed.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "payment.completed" },
+    "dataSchema": { "const": "payment.completed.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["orderId", "paymentId", "tenantId", "transactionId"],
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1 },
+        "paymentId": { "type": "string", "minLength": 1 },
+        "tenantId": { "type": "integer" },
+        "transactionId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
