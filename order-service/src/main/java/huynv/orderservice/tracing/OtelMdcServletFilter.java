@@ -20,6 +20,9 @@ import java.io.IOException;
 @Order(15)
 public class OtelMdcServletFilter extends OncePerRequestFilter {
 
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
+    private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
+
     /**
      * Adds trace identifiers to MDC for the duration of the request and restores prior values after completion.
      *
@@ -33,16 +36,31 @@ public class OtelMdcServletFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String previousTraceId = MDC.get("traceId");
         String previousSpanId = MDC.get("spanId");
+        String previousRequestId = MDC.get("requestId");
+        String previousCorrelationId = MDC.get("correlationId");
         try {
             SpanContext spanContext = Span.current().getSpanContext();
             if (spanContext.isValid()) {
                 MDC.put("traceId", spanContext.getTraceId());
                 MDC.put("spanId", spanContext.getSpanId());
             }
+            String requestId = request.getHeader(REQUEST_ID_HEADER);
+            if (requestId != null && !requestId.isBlank()) {
+                MDC.put("requestId", requestId);
+            }
+            String correlationId = request.getHeader(CORRELATION_ID_HEADER);
+            if ((correlationId == null || correlationId.isBlank()) && requestId != null && !requestId.isBlank()) {
+                correlationId = requestId;
+            }
+            if (correlationId != null && !correlationId.isBlank()) {
+                MDC.put("correlationId", correlationId);
+            }
             filterChain.doFilter(request, response);
         } finally {
             restoreMdc("traceId", previousTraceId);
             restoreMdc("spanId", previousSpanId);
+            restoreMdc("requestId", previousRequestId);
+            restoreMdc("correlationId", previousCorrelationId);
         }
     }
 

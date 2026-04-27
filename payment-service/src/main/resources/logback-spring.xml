@@ -14,19 +14,35 @@
                     <pattern>{"service":"${serviceName}"}</pattern>
                 </pattern>
                 <logLevel>
-                    <fieldName>logLevel</fieldName>
+                    <fieldName>level</fieldName>
                 </logLevel>
+                <threadName>
+                    <fieldName>thread</fieldName>
+                </threadName>
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
                 <message>
                     <fieldName>message</fieldName>
                 </message>
+                <stackTrace>
+                    <fieldName>exception</fieldName>
+                </stackTrace>
                 <mdc>
                     <includeMdcKeyName>traceId</includeMdcKeyName>
                     <includeMdcKeyName>spanId</includeMdcKeyName>
                     <includeMdcKeyName>parentSpanId</includeMdcKeyName>
                     <includeMdcKeyName>correlationId</includeMdcKeyName>
+                    <includeMdcKeyName>causationId</includeMdcKeyName>
                     <includeMdcKeyName>tenantId</includeMdcKeyName>
                     <includeMdcKeyName>userId</includeMdcKeyName>
                     <includeMdcKeyName>orderId</includeMdcKeyName>
+                    <includeMdcKeyName>productId</includeMdcKeyName>
+                    <includeMdcKeyName>paymentId</includeMdcKeyName>
+                    <includeMdcKeyName>eventId</includeMdcKeyName>
+                    <includeMdcKeyName>sagaId</includeMdcKeyName>
+                    <includeMdcKeyName>notificationId</includeMdcKeyName>
+                    <includeMdcKeyName>aggregateId</includeMdcKeyName>
                 </mdc>
             </providers>
         </encoder>

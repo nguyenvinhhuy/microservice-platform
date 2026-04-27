@@ -7,10 +7,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class AuditLogServiceApplication {
 
     /**
-     * main operation.
+     * Bootstraps the audit log service Spring Boot application.
      *
-     * @param args input parameter
-     * @return performs side effects defined by this operation
+     * @param args Command-line arguments passed to the Spring Boot application context.
+     * @return Performs a side effect by starting the embedded server and initializing all beans.
      */
     public static void main(String[] args) {
         SpringApplication.run(AuditLogServiceApplication.class, args);

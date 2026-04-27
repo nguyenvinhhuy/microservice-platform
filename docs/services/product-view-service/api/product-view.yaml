@@ -1,0 +1,108 @@
+openapi: 3.1.0
+info:
+  title: Product View Service API
+  version: 1.0.0
+  description: Implementation-accurate query API for product-view-service.
+servers:
+  - url: http://localhost:8086
+paths:
+  /products:
+    get:
+      summary: List products for one tenant
+      operationId: listProducts
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+      responses:
+        '200':
+          description: Tenant-scoped product page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+  /products/{id}:
+    get:
+      summary: Get one product for one tenant
+      operationId: getProductById
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Product projection row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductViewResponse'
+        '500':
+          description: Current implementation does not map missing rows to 404 explicitly.
+components:
+  schemas:
+    ProductViewResponse:
+      type: object
+      required:
+        - productId
+        - updatedAt
+      properties:
+        productId:
+          type: integer
+          format: int64
+        name:
+          type: string
+          nullable: true
+        price:
+          type: number
+          nullable: true
+        stock:
+          type: integer
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+    ProductPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductViewResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer

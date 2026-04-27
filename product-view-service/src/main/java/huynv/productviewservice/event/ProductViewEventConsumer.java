@@ -7,6 +7,7 @@ import huynv.event.idempotency.IdempotencyService;
 import huynv.event.BaseEvent;
 import huynv.productviewservice.service.ProductViewProjectionService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -46,12 +47,17 @@ public class ProductViewEventConsumer {
      */
     @KafkaListener(topics = "${productview.kafka.product-topic:product.events}", groupId = "${productview.kafka.group-id:product-view-service}")
     public void onProductEvent(ConsumerRecord<String, String> record) {
-        BaseEvent<JsonNode> event = parseEnvelope(record.value());
-        if (idempotencyService.alreadyProcessed(event.eventId())) {
-            return;
+        try {
+            BaseEvent<JsonNode> event = parseEnvelope(record.value());
+            putMdc(record, event);
+            if (idempotencyService.alreadyProcessed(event.eventId())) {
+                return;
+            }
+            applyProductEvent(event);
+            idempotencyService.markProcessed(event.eventId());
+        } finally {
+            clearMdc();
         }
-        applyProductEvent(event);
-        idempotencyService.markProcessed(event.eventId());
     }
 
     /**
@@ -62,12 +68,17 @@ public class ProductViewEventConsumer {
      */
     @KafkaListener(topics = "${productview.kafka.inventory-topic:inventory.events}", groupId = "${productview.kafka.group-id:product-view-service}")
     public void onInventoryEvent(ConsumerRecord<String, String> record) {
-        BaseEvent<JsonNode> event = parseEnvelope(record.value());
-        if (idempotencyService.alreadyProcessed(event.eventId())) {
-            return;
+        try {
+            BaseEvent<JsonNode> event = parseEnvelope(record.value());
+            putMdc(record, event);
+            if (idempotencyService.alreadyProcessed(event.eventId())) {
+                return;
+            }
+            applyInventoryEvent(event);
+            idempotencyService.markProcessed(event.eventId());
+        } finally {
+            clearMdc();
         }
-        applyInventoryEvent(event);
-        idempotencyService.markProcessed(event.eventId());
     }
 
     private BaseEvent<JsonNode> parseEnvelope(String payload) {
@@ -200,6 +211,72 @@ public class ProductViewEventConsumer {
             return null;
         }
         return value.asText();
+    }
+
+    /**
+     * Populates MDC values from Kafka metadata and the parsed envelope for product projection logs.
+     *
+     * @param record Kafka record currently being processed.
+     * @param event Parsed event envelope carrying correlation fields.
+     * @return Performs side effects by setting MDC values for the current thread.
+     */
+    private static void putMdc(ConsumerRecord<String, String> record, BaseEvent<JsonNode> event) {
+        putIfPresent("eventId", event == null ? null : event.eventId());
+        putIfPresent("correlationId", event == null ? null : event.correlationId());
+        putIfPresent("causationId", event == null ? null : event.causationId());
+        putIfPresent("aggregateId", event == null ? null : event.aggregateId());
+        putIfPresent("tenantId", event == null ? null : stringify(longOrNull(event.data(), "tenantId")));
+        putIfPresent("userId", event == null ? null : stringify(longOrNull(event.data(), "userId")));
+        putIfPresent("orderId", event == null ? null : textOrNull(event.data(), "orderId"));
+        putIfPresent("productId", event == null ? null : textOrNull(event.data(), "productId"));
+        putIfPresent("paymentId", event == null ? null : textOrNull(event.data(), "paymentId"));
+        putIfPresent("topic", record == null ? null : record.topic());
+        putIfPresent("partition", record == null ? null : String.valueOf(record.partition()));
+        putIfPresent("offset", record == null ? null : String.valueOf(record.offset()));
+    }
+
+    /**
+     * Clears MDC fields used during projection updates to avoid leaking context between Kafka records.
+     *
+     * @return Performs side effects by removing MDC values for the current thread.
+     */
+    private static void clearMdc() {
+        MDC.remove("eventId");
+        MDC.remove("correlationId");
+        MDC.remove("causationId");
+        MDC.remove("aggregateId");
+        MDC.remove("tenantId");
+        MDC.remove("userId");
+        MDC.remove("orderId");
+        MDC.remove("productId");
+        MDC.remove("paymentId");
+        MDC.remove("topic");
+        MDC.remove("partition");
+        MDC.remove("offset");
+    }
+
+    /**
+     * Converts a nullable numeric identifier into a string for MDC storage.
+     *
+     * @param value Numeric identifier that may be null.
+     * @return Returns the string representation of the value, or null when absent.
+     */
+    private static String stringify(Long value) {
+        return value == null ? null : value.toString();
+    }
+
+    /**
+     * Writes one MDC entry only when the value is non-null and non-blank.
+     *
+     * @param key MDC key name.
+     * @param value MDC value to set.
+     * @return Performs a side effect by updating MDC for the current thread.
+     */
+    private static void putIfPresent(String key, String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        MDC.put(key, value);
     }
 
     

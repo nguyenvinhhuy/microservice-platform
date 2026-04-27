@@ -1,0 +1,39 @@
+asyncapi: 3.0.0
+info:
+  title: DLQ Replayer Service Event Contract
+  version: 1.0.0
+  description: |
+    Implementation-accurate inbound and replay topology for dlq-replayer-service.
+    The service consumes any DLQ topic matching a configured regex and republishes raw payloads on demand.
+channels:
+  dlq.any:
+    address: '.*\.dlq'
+    messages:
+      rawDlqRecord:
+        $ref: '#/components/messages/RawDlqRecord'
+  replay.target:
+    address: dynamic
+    messages:
+      replayedRecord:
+        $ref: '#/components/messages/ReplayedRecord'
+operations:
+  consumeDlqRecords:
+    action: receive
+    channel:
+      $ref: '#/channels/dlq.any'
+  replayStoredRecord:
+    action: send
+    channel:
+      $ref: '#/channels/replay.target'
+components:
+  messages:
+    RawDlqRecord:
+      name: dlq.record
+      payload:
+        type: string
+        description: Raw Kafka value received from a DLQ topic.
+    ReplayedRecord:
+      name: dlq.replayed.record
+      payload:
+        type: string
+        description: Raw Kafka value republished from stored DLQ state.

@@ -55,6 +55,7 @@ public class TrustedRequestContextFilter implements GlobalFilter, Ordered {
     private static ServerWebExchange buildExchangeWithTrustedHeaders(ServerWebExchange exchange, JwtAuthenticationToken authentication) {
         ServerHttpRequest.Builder requestBuilder = exchange.getRequest().mutate();
         String requestId = ensureRequestId(exchange.getRequest().getHeaders());
+        String correlationId = ensureCorrelationId(exchange.getRequest().getHeaders(), requestId);
         String traceparent = ensureTraceparent(exchange.getRequest().getHeaders());
         String traceId = W3cTraceContext.traceIdFromTraceparent(traceparent);
 
@@ -66,6 +67,7 @@ public class TrustedRequestContextFilter implements GlobalFilter, Ordered {
         requestBuilder.headers(headers -> {
             sanitizeUntrustedIdentityHeaders(headers);
             headers.set(GatewayHeaderNames.REQUEST_ID, requestId);
+            headers.set(GatewayHeaderNames.CORRELATION_ID, correlationId);
             headers.set(GatewayHeaderNames.TRACEPARENT, traceparent);
             headers.set(GatewayHeaderNames.TRACE_ID, traceId);
 
@@ -121,6 +123,21 @@ public class TrustedRequestContextFilter implements GlobalFilter, Ordered {
             return UUID.randomUUID().toString();
         }
         return requestId;
+    }
+
+    /**
+     * Ensures a correlation id is present for cross-service tracing, falling back to the stable request id.
+     *
+     * @param headers Incoming request headers.
+     * @param requestId Stable request id already resolved for the request.
+     * @return Returns the correlation id to propagate downstream.
+     */
+    private static String ensureCorrelationId(HttpHeaders headers, String requestId) {
+        String correlationId = headers.getFirst(GatewayHeaderNames.CORRELATION_ID);
+        if (correlationId == null || correlationId.isBlank()) {
+            return requestId;
+        }
+        return correlationId;
     }
 
     /**

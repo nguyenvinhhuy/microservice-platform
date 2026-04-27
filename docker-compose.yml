@@ -297,10 +297,11 @@ services:
     container_name: product-service
     image: your-registry/product-service:latest
     build:
-      context: ./product-service
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: product-service/Dockerfile
     environment:
       SERVER_PORT: 8006
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
       SPRING_DATASOURCE_URL: jdbc:postgresql://product-db:5432/product_db
       SPRING_DATASOURCE_USERNAME: product
       SPRING_DATASOURCE_PASSWORD: ${PRODUCT_DB_PASSWORD:-product123}
@@ -987,7 +988,7 @@ volumes:
     driver: local
 
   # DevOps
-  docker-registry_data:
+  registry_data:
     driver: local
   jenkins_data:
     driver: local

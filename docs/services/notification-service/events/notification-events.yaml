@@ -1,0 +1,210 @@
+asyncapi: 3.0.0
+info:
+  title: Notification Service Event Topology
+  version: 1.0.0
+  description: |
+    Implementation-accurate event topology for notification-service.
+    This service primarily consumes business events and republishes them into
+    internal notification topics and channel work queues.
+channels:
+  order.events:
+    address: order.events
+    messages:
+      orderCreated:
+        $ref: '#/components/messages/OrderCreatedMessage'
+      orderCancelled:
+        $ref: '#/components/messages/OrderCancelledMessage'
+  payment.events:
+    address: payment.events
+    messages:
+      paymentCompleted:
+        $ref: '#/components/messages/PaymentCompletedMessage'
+      paymentSucceededAlias:
+        $ref: '#/components/messages/PaymentSucceededAliasMessage'
+      paymentFailed:
+        $ref: '#/components/messages/PaymentFailedMessage'
+  notification.events:
+    address: notification.events
+    messages:
+      normalizedEvent:
+        $ref: '#/components/messages/NormalizedNotificationEvent'
+  notification.email:
+    address: notification.email
+    messages:
+      notificationJob:
+        $ref: '#/components/messages/NotificationJobMessage'
+  notification.sms:
+    address: notification.sms
+    messages:
+      notificationJob:
+        $ref: '#/components/messages/NotificationJobMessage'
+  notification.push:
+    address: notification.push
+    messages:
+      notificationJob:
+        $ref: '#/components/messages/NotificationJobMessage'
+operations:
+  consumeOrderEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/order.events'
+  consumePaymentEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/payment.events'
+  publishInternalNotificationEvents:
+    action: send
+    channel:
+      $ref: '#/channels/notification.events'
+  consumeInternalNotificationEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/notification.events'
+  publishChannelJobs:
+    action: send
+    channel:
+      $ref: '#/channels/notification.email'
+  consumeEmailJobs:
+    action: receive
+    channel:
+      $ref: '#/channels/notification.email'
+components:
+  messages:
+    OrderCreatedMessage:
+      name: order.created
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    OrderCancelledMessage:
+      name: order.cancelled
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    PaymentCompletedMessage:
+      name: payment.completed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    PaymentSucceededAliasMessage:
+      name: payment.succeeded
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    PaymentFailedMessage:
+      name: payment.failed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    NormalizedNotificationEvent:
+      name: notification.internal.raw-event
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    NotificationJobMessage:
+      name: notification.job
+      payload:
+        $ref: '#/components/schemas/NotificationJob'
+  schemas:
+    BaseEnvelope:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - eventTime
+        - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+          nullable: true
+        eventTime:
+          type: string
+          format: date-time
+        aggregateId:
+          type: string
+          nullable: true
+        aggregateVersion:
+          type: integer
+          format: int64
+        dataSchema:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        causationId:
+          type: string
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true
+      description: |
+        The module consumes generic BaseEvent envelopes and only processes a subset
+        of event types when `data.tenantId` is present.
+    NotificationJob:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - tenantId
+        - userId
+        - notificationType
+        - channel
+        - priority
+        - subject
+        - templateName
+        - templateModel
+        - rawPayload
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        tenantId:
+          type: integer
+          format: int64
+        userId:
+          type: integer
+          format: int64
+        orderId:
+          type: string
+          nullable: true
+        notificationType:
+          type: string
+        channel:
+          type: string
+          enum:
+            - EMAIL
+            - SMS
+            - PUSH
+        priority:
+          type: string
+          enum:
+            - HIGH
+            - NORMAL
+            - LOW
+        subject:
+          type: string
+        templateName:
+          type: string
+        templateModel:
+          type: object
+          additionalProperties: true
+        rawPayload:
+          type: string
+        recipientEmail:
+          type: string
+          nullable: true
+        recipientPhoneNumber:
+          type: string
+          nullable: true
+        recipientPushTokens:
+          type: array
+          items:
+            type: string
+        traceId:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true

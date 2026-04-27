@@ -102,6 +102,12 @@ kubectl logs -f [pod-name] -n microservice-platform
 kubectl logs -f [pod-name] -c [container-name] -n microservice-platform
 ```
 
+### Logging Docs
+
+- [EFK Logging Design](D:/IntelliJProjects/microservice-platform/docs/efk-logging-design.md:1)
+- [Kibana Query Cheatsheet](D:/IntelliJProjects/microservice-platform/docs/kibana-query-cheatsheet.md:1)
+- [Logging Runbook](D:/IntelliJProjects/microservice-platform/docs/logging-runbook.md:1)
+
 ### Check Events
 ```bash
 kubectl get events -n microservice-platform

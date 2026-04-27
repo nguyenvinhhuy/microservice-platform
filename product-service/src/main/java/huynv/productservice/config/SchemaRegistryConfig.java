@@ -1,6 +1,7 @@
 package huynv.productservice.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import huynv.event.schema.ApicurioRegistryClient;
 import huynv.event.schema.ClasspathSchemaLoader;
 import huynv.event.schema.JsonSchemaValidationService;
@@ -18,6 +19,18 @@ import java.time.Duration;
  */
 @Configuration
 public class SchemaRegistryConfig {
+
+    /**
+     * Creates a shared Jackson object mapper for event serialization and schema validation.
+     *
+     * @return Returns an object mapper with discovered Jackson modules registered.
+     */
+    @Bean
+    public ObjectMapper objectMapper() {
+        return JsonMapper.builder()
+                .findAndAddModules()
+                .build();
+    }
 
     /**
      * Creates a classpath schema loader using the default {@code schemas/} base directory.

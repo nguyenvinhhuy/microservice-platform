@@ -1,0 +1,61 @@
+asyncapi: 3.0.0
+info:
+  title: Product View Service Event Contract
+  version: 1.0.0
+  description: |
+    Implementation-accurate inbound event contract for product-view-service.
+    This service only consumes events and does not publish domain events.
+channels:
+  product.events:
+    address: product.events
+    messages:
+      productUpdated:
+        $ref: '#/components/messages/ProductUpdated'
+      productPriceUpdated:
+        $ref: '#/components/messages/ProductPriceUpdated'
+  inventory.events:
+    address: inventory.events
+    messages:
+      inventoryStockUpdated:
+        $ref: '#/components/messages/InventoryStockUpdated'
+operations:
+  consumeProductEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/product.events'
+  consumeInventoryEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/inventory.events'
+components:
+  messages:
+    ProductUpdated:
+      name: product.updated
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    ProductPriceUpdated:
+      name: product.price.updated
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    InventoryStockUpdated:
+      name: inventory.stock.updated
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+  schemas:
+    BaseEnvelope:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+      description: |
+        Product-view-service parses generic BaseEvent<JsonNode> envelopes and extracts only a subset of fields:
+        `tenantId`, `productId`, `name`, `price`, `availableStock`.

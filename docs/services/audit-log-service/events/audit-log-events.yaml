@@ -1,0 +1,78 @@
+asyncapi: 3.0.0
+info:
+  title: Audit Log Service Event Contract
+  version: 1.0.0
+  description: |
+    Implementation-accurate inbound event contract for audit-log-service.
+    This service consumes selected business topics and persists immutable audit rows; it does not publish domain events.
+channels:
+  order.events:
+    address: order.events
+    messages:
+      orderEvent:
+        $ref: '#/components/messages/BaseEventMessage'
+  payment.events:
+    address: payment.events
+    messages:
+      paymentEvent:
+        $ref: '#/components/messages/BaseEventMessage'
+  inventory.events:
+    address: inventory.events
+    messages:
+      inventoryEvent:
+        $ref: '#/components/messages/BaseEventMessage'
+  product.events:
+    address: product.events
+    messages:
+      productEvent:
+        $ref: '#/components/messages/BaseEventMessage'
+operations:
+  consumeOrderEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/order.events'
+  consumePaymentEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/payment.events'
+  consumeInventoryEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/inventory.events'
+  consumeProductEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/product.events'
+components:
+  messages:
+    BaseEventMessage:
+      name: audit.source.event
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+  schemas:
+    BaseEnvelope:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+          nullable: true
+        aggregateId:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        causationId:
+          type: string
+          nullable: true
+        data:
+          type: object
+          additionalProperties: true

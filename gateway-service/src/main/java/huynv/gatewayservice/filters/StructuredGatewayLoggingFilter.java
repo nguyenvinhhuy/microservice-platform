@@ -117,6 +117,7 @@ public class StructuredGatewayLoggingFilter implements GlobalFilter, Ordered {
     private static void logExchange(ServerWebExchange exchange, Authentication authentication, long startNanos) {
         HttpHeaders headers = exchange.getRequest().getHeaders();
         String requestId = headers.getFirst(GatewayHeaderNames.REQUEST_ID);
+        String correlationId = headers.getFirst(GatewayHeaderNames.CORRELATION_ID);
         String traceparent = headers.getFirst(GatewayHeaderNames.TRACEPARENT);
         String traceId = W3cTraceContext.parseTraceId(traceparent) == null ? null : W3cTraceContext.traceIdFromTraceparent(traceparent);
 
@@ -126,6 +127,7 @@ public class StructuredGatewayLoggingFilter implements GlobalFilter, Ordered {
         long latencyMs = (System.nanoTime() - startNanos) / 1_000_000L;
 
         putMdcIfPresent("requestId", requestId);
+        putMdcIfPresent("correlationId", correlationId);
         putMdcIfPresent("traceId", traceId);
         putMdcIfPresent("tenantId", identity.tenantId());
         putMdcIfPresent("userId", identity.userId());

@@ -102,7 +102,7 @@ Redis    Kafka         PostgreSQL    MinIO         (Optional)
 - TypeScript 5.9+
 
 **Backend:**
-- Spring Boot 3.x
+- Spring Boot 4.0.6
 - Spring Cloud (Gateway, Feign, etc.)
 - Spring Data JPA
 - Spring Kafka
@@ -129,7 +129,7 @@ Redis    Kafka         PostgreSQL    MinIO         (Optional)
 ```bash
 ✓ Docker & Docker Compose 2.0+
 ✓ Node.js 22+ (for Angular development)
-✓ Java 17+ (for Spring Boot development)
+✓ Java 25 (for Spring Boot development)
 ✓ Git
 ```
 
@@ -504,24 +504,4 @@ docker-compose exec redis redis-cli -a redis123 info memory
 - [Kafka Documentation](https://kafka.apache.org/documentation/)
 - [Kubernetes Docs](https://kubernetes.io/docs/)
 - [Prometheus Queries](https://prometheus.io/docs/prometheus/latest/querying/basics/)
-
-## 🤝 Contributing
-
-1. Create feature branch: `git checkout -b feature/amazing-feature`
-2. Commit changes: `git commit -m 'Add amazing feature'`
-3. Push to branch: `git push origin feature/amazing-feature`
-4. Open Pull Request
-
-## 📄 License
-
-MIT License - See LICENSE file for details
-
-## 👨‍💻 Team
-
-Your Team Name / Organization
-
----
-
-**Last Updated:** 2026-02-11  
-**Status:** Production Ready ✅
 

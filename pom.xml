@@ -24,6 +24,7 @@
         <module>order-view-service</module>
         <module>dlq-replayer-service</module>
         <module>gateway-service</module>
+        <module>audit-log-service</module>
     </modules>
 </project>
 

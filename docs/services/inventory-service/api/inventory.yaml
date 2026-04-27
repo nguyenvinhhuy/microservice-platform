@@ -1,0 +1,197 @@
+openapi: "3.0.3"
+info:
+  title: inventory-service
+  version: "1.0.0"
+  description: >
+    Internal inventory reservation API. This contract reflects the current
+    implementation, which is designed for trusted service-to-service callers.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: reservations
+    description: Internal stock reservation operations.
+
+paths:
+  /internal/inventory/reservations:
+    post:
+      tags: [reservations]
+      summary: Reserve stock for an order.
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserIdOptional"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReserveStockRequest"
+      responses:
+        "204":
+          description: Stock reserved successfully or request replayed idempotently.
+        "400":
+          description: Insufficient stock or invalid reservation request state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tenant ownership validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Concurrent stock update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/inventory/reservations/{orderId}/confirm:
+    post:
+      tags: [reservations]
+      summary: Confirm reserved stock for an order.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserIdOptional"
+      responses:
+        "204":
+          description: Reservation confirmed successfully or already confirmed.
+        "400":
+          description: Invalid reservation status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reservation not found for tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tenant ownership validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Concurrent stock update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /internal/inventory/reservations/{orderId}/release:
+    post:
+      tags: [reservations]
+      summary: Release reserved stock for an order.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserIdOptional"
+      responses:
+        "204":
+          description: Reservation released successfully, already released, or already confirmed.
+        "400":
+          description: Invalid reservation status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Reservation not found for tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Tenant ownership validation failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Concurrent stock update conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XTenantId:
+      name: X-Tenant-Id
+      in: header
+      required: false
+      schema:
+        type: integer
+        format: int64
+    XUserIdOptional:
+      name: X-User-Id
+      in: header
+      required: false
+      schema:
+        type: integer
+        format: int64
+
+  schemas:
+    ReservationItem:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+        quantity:
+          type: integer
+      required: [productId, quantity]
+
+    ReserveStockRequest:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReservationItem"
+        amount:
+          type: number
+        currency:
+          type: string
+        paymentProvider:
+          type: string
+        idempotencyKey:
+          type: string
+        correlationId:
+          type: string
+        traceId:
+          type: string
+      required: [orderId, items]
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string

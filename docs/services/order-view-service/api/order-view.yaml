@@ -1,0 +1,118 @@
+openapi: 3.1.0
+info:
+  title: Order View Service API
+  version: 1.0.0
+  description: Implementation-accurate query API for order-view-service.
+servers:
+  - url: http://localhost:8087
+paths:
+  /orders:
+    get:
+      summary: List orders for one tenant
+      operationId: listOrders
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: X-User-Id
+          in: header
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+      responses:
+        '200':
+          description: Tenant-scoped order page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderPage'
+  /orders/{id}:
+    get:
+      summary: Get one order for one tenant
+      operationId: getOrderById
+      parameters:
+        - name: X-Tenant-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Order projection row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderViewResponse'
+        '500':
+          description: Current implementation does not map missing rows to 404 explicitly.
+components:
+  schemas:
+    OrderViewResponse:
+      type: object
+      required:
+        - orderId
+        - userId
+        - createdAt
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        userId:
+          type: integer
+          format: int64
+        status:
+          type: string
+          nullable: true
+        paymentStatus:
+          type: string
+          nullable: true
+        stockStatus:
+          type: string
+          nullable: true
+        totalPrice:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    OrderPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderViewResponse'
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer

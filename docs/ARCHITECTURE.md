@@ -1,5 +1,11 @@
 # Microservice Platform - Service Dependency & Health Check Guide
 
+## Logging & Observability Docs
+
+- [EFK Logging Design](D:/IntelliJProjects/microservice-platform/docs/efk-logging-design.md:1)
+- [Kibana Query Cheatsheet](D:/IntelliJProjects/microservice-platform/docs/kibana-query-cheatsheet.md:1)
+- [Logging Runbook](D:/IntelliJProjects/microservice-platform/docs/logging-runbook.md:1)
+
 ## 📊 Service Dependencies Map
 
 ```

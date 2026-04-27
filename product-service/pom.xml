@@ -30,6 +30,7 @@
         <java.version>25</java.version>
         <testcontainers.version>1.19.3</testcontainers.version>
         <opentelemetry.version>1.32.0</opentelemetry.version>
+        <flyway.version>11.14.1</flyway.version>
     </properties>
     <dependencies>
         <dependency>
@@ -98,6 +99,11 @@
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
         </dependency>
 
         <dependency>

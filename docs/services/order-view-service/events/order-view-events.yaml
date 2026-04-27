@@ -1,0 +1,98 @@
+asyncapi: 3.0.0
+info:
+  title: Order View Service Event Contract
+  version: 1.0.0
+  description: |
+    Implementation-accurate inbound event contract for order-view-service.
+    This service only consumes events and does not publish domain events.
+channels:
+  order.events:
+    address: order.events
+    messages:
+      orderCreated:
+        $ref: '#/components/messages/OrderCreated'
+      orderPaid:
+        $ref: '#/components/messages/OrderPaid'
+      orderFailed:
+        $ref: '#/components/messages/OrderFailed'
+  payment.events:
+    address: payment.events
+    messages:
+      paymentCompleted:
+        $ref: '#/components/messages/PaymentCompleted'
+      paymentFailed:
+        $ref: '#/components/messages/PaymentFailed'
+  inventory.events:
+    address: inventory.events
+    messages:
+      stockReserved:
+        $ref: '#/components/messages/StockReserved'
+      stockConfirmed:
+        $ref: '#/components/messages/StockConfirmed'
+      stockReleased:
+        $ref: '#/components/messages/StockReleased'
+operations:
+  consumeOrderEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/order.events'
+  consumePaymentEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/payment.events'
+  consumeInventoryEvents:
+    action: receive
+    channel:
+      $ref: '#/channels/inventory.events'
+components:
+  messages:
+    OrderCreated:
+      name: order.created
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    OrderPaid:
+      name: order.paid
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    OrderFailed:
+      name: order.failed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    PaymentCompleted:
+      name: payment.completed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    PaymentFailed:
+      name: payment.failed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    StockReserved:
+      name: inventory.stock.reserved
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    StockConfirmed:
+      name: inventory.stock.confirmed
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+    StockReleased:
+      name: inventory.stock.released
+      payload:
+        $ref: '#/components/schemas/BaseEnvelope'
+  schemas:
+    BaseEnvelope:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+      description: |
+        Order-view-service parses generic BaseEvent<JsonNode> envelopes and extracts only a subset of fields:
+        `tenantId`, `orderId`, `userId`, `status`, `totalAmount`, `timestamp`.
