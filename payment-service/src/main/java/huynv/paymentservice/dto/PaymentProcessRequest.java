@@ -16,7 +16,6 @@ public record PaymentProcessRequest(
         @NotNull @Positive BigDecimal amount,
         @NotBlank String currency,
         @NotBlank String paymentProvider,
-        @NotBlank String idempotencyKey,
         String correlationId,
         String traceId
 ) {

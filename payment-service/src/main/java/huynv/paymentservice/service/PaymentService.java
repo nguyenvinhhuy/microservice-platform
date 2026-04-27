@@ -35,14 +35,16 @@ public class PaymentService {
      * Processes a payment request originating from the REST API.
      *
      * @param request Request payload containing order and payment details.
+     * @param idempotencyKey Canonical REST idempotency key supplied via HTTP header.
      * @return Returns the current payment state after processing or idempotent lookup.
      */
-    public PaymentResponse processPayment(PaymentProcessRequest request) {
+    public PaymentResponse processPayment(PaymentProcessRequest request, String idempotencyKey) {
         Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(idempotencyKey, "idempotencyKey");
         paymentMetrics.recordRequest();
         OffsetDateTime start = OffsetDateTime.now();
         try {
-            PaymentResponse response = paymentTransactionService.processFromApi(request);
+            PaymentResponse response = paymentTransactionService.processFromApi(request, idempotencyKey);
             if (response.status() == PaymentStatus.SUCCEEDED) {
                 paymentMetrics.recordSuccess();
             } else if (response.status() == PaymentStatus.FAILED) {

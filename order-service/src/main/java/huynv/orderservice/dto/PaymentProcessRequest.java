@@ -12,7 +12,6 @@ public record PaymentProcessRequest(
         BigDecimal amount,
         String currency,
         String paymentProvider,
-        String idempotencyKey,
         String correlationId,
         String traceId
 ) {

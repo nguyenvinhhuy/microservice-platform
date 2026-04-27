@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -35,16 +36,14 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * Coordinates persisted order saga execution and resume behavior.
+ * Contract: step delivery is at-least-once, compensation is explicit via COMPENSATING state,
+ * and crash recovery relies on persisted saga rows plus replay-safe transitions.
+ */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-/**
- * Coordinates persisted order saga execution and resume behavior.
- * Contract:
- * - Step delivery is AT_LEAST_ONCE; side effects must remain idempotent.
- * - Compensation is explicit via COMPENSATING state and retriable rollback actions.
- * - Crash recovery uses persisted saga rows and replay-safe step transitions.
- */
 public class OrderSagaCoordinator {
 
     private static final String API_CREATE_ORDER = "CREATE_ORDER";
@@ -60,6 +59,7 @@ public class OrderSagaCoordinator {
     private final PaymentGatewayService paymentGatewayService;
     private final OrderSagaRepository orderSagaRepository;
     private final MeterRegistry meterRegistry;
+    private final ObjectProvider<OrderSagaCoordinator> selfProvider;
     @Value("${order.saga.enabled:true}")
     private boolean sagaEnabled;
 
@@ -67,27 +67,20 @@ public class OrderSagaCoordinator {
     private String defaultPaymentProvider;
 
     /**
-     * Executes create-order saga and guarantees deterministic idempotent API behavior.
+     * Executes the create-order saga and guarantees deterministic idempotent API behavior.
      *
-     * @param tenantId tenant owner identifier propagated by trusted gateway
-     * @param userId user identifier owning command side effects
-     * @param request validated create-order command payload
-     * @param requestId idempotency key from mandatory request header
-     * @return deterministic create response for first call and retries
+     * @param tenantId The tenant owner identifier propagated by the trusted gateway.
+     * @param userId The user identifier that owns the command side effects.
+     * @param request The validated create-order command payload.
+     * @param idempotencyKey The idempotency key from the mandatory request header.
+     * @return Returns the deterministic create response for the first call and for retries.
      */
-    /**
-     * createOrder operation.
-     *
-     * @param tenantId input parameter
-     * @param userId input parameter
-     * @param request input parameter
-     * @param requestId input parameter
-     * @return createOrder result
-     */
-    public CreateOrderResponse createOrder(Long tenantId, Long userId, CreateOrderRequest request, String requestId) {
+    public CreateOrderResponse createOrder(Long tenantId, Long userId, CreateOrderRequest request, String idempotencyKey) {
         ensureSagaEnabled("createOrder");
         String causationId = UUID.randomUUID().toString();
-        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, requestId, API_CREATE_ORDER);
+        String correlationId = currentCorrelationId(idempotencyKey);
+        String traceId = currentTraceId(correlationId);
+        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, idempotencyKey, API_CREATE_ORDER);
         CreateOrderResponse replay = tryReplay(decision.key(), CreateOrderResponse.class);
         if (replay != null) {
             return replay;
@@ -104,10 +97,10 @@ public class OrderSagaCoordinator {
                 mapOrderItems(request.getItems())
         );
         idempotencyService.bindOrder(decision.key().getId(), order.getId());
-        OrderSaga saga = createSaga(tenantId, order.getId(), OrderSagaState.RESERVE_STOCK, requestId, null);
+        OrderSaga saga = self().createSaga(tenantId, order.getId(), OrderSagaState.RESERVE_STOCK, idempotencyKey, null);
         MDC.put("orderId", order.getId().toString());
         try {
-            executeReserveStep(order, saga, requestId, causationId);
+            executeReserveStep(order, saga, correlationId, traceId, causationId);
             Order reserved = orderTransactionalService.findOrder(order.getId(), tenantId);
             CreateOrderResponse response = CreateOrderResponse.builder()
                     .orderId(reserved.getId())
@@ -131,27 +124,19 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Executes payment saga from reserved order to confirmed order with compensation safety.
+     * Executes the payment saga from a reserved order to a confirmed order with compensation safety.
      *
-     * @param tenantId tenant owner identifier propagated by trusted gateway
-     * @param orderId order identifier targeted by pay API
-     * @param request validated payment request payload
-     * @param requestId idempotency key from mandatory request header
-     * @return deterministic payment response for first call and retries
+     * @param tenantId The tenant owner identifier propagated by the trusted gateway.
+     * @param orderId The order identifier targeted by the pay API.
+     * @param request The validated payment request payload.
+     * @param idempotencyKey The idempotency key from the mandatory request header.
+     * @return Returns the deterministic payment response for the first call and for retries.
      */
-    /**
-     * payOrder operation.
-     *
-     * @param tenantId input parameter
-     * @param orderId input parameter
-     * @param request input parameter
-     * @param requestId input parameter
-     * @return payOrder result
-     */
-    public OrderActionResponse payOrder(Long tenantId, UUID orderId, PayOrderRequest request, String requestId) {
+    public OrderActionResponse payOrder(Long tenantId, UUID orderId, PayOrderRequest request, String idempotencyKey) {
         ensureSagaEnabled("payOrder");
         String causationId = UUID.randomUUID().toString();
-        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, requestId, API_PAY_ORDER);
+        String correlationId = currentCorrelationId(idempotencyKey);
+        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, idempotencyKey, API_PAY_ORDER);
         OrderActionResponse replay = tryReplay(decision.key(), OrderActionResponse.class);
         if (replay != null) {
             return replay;
@@ -161,7 +146,7 @@ public class OrderSagaCoordinator {
             return buildProcessingActionResponse(tenantId, orderId, "PAYMENT_PROCESSING");
         }
 
-        OrderSaga saga = findOrCreateSaga(tenantId, orderId, OrderSagaState.CHARGE_PAYMENT, requestId, request.getProvider());
+        OrderSaga saga = self().findOrCreateSaga(tenantId, orderId, OrderSagaState.CHARGE_PAYMENT, idempotencyKey, request.getProvider());
         if (saga.getState() == OrderSagaState.COMPLETED) {
             Order order = orderTransactionalService.findOrder(orderId, tenantId);
             OrderActionResponse response = OrderActionResponse.builder()
@@ -189,10 +174,10 @@ public class OrderSagaCoordinator {
 
             if (saga.getState() == OrderSagaState.CHARGE_PAYMENT && paymentId == null) {
                 Timer.Sample timer = Timer.start(meterRegistry);
-                paymentId = paymentGatewayService.charge(request.getProvider(), started.getTotalAmount(), orderId, tenantId);
+                paymentId = paymentGatewayService.charge(request.getProvider(), started.getTotalAmount(), orderId, tenantId, idempotencyKey, correlationId);
                 timer.stop(meterRegistry.timer("payment.charge.latency"));
-                updateSagaAfterCharge(saga.getId(), paymentId, request.getProvider());
-                saga = loadSaga(saga.getId());
+                self().updateSagaAfterCharge(saga.getId(), paymentId, request.getProvider());
+                saga = self().loadSaga(saga.getId());
             }
 
             if (saga.getState() == OrderSagaState.CONFIRM_STOCK) {
@@ -205,11 +190,11 @@ public class OrderSagaCoordinator {
                         tenantId,
                         saga.getPaymentId(),
                         request.getProvider(),
-                        requestId,
+                        correlationId,
                         causationId,
-                        requestId
+                        idempotencyKey
                 );
-                moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
+                self().moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
                 OrderActionResponse response = OrderActionResponse.builder()
                         .orderId(confirmed.getId())
                         .status(confirmed.getStatus().name())
@@ -232,9 +217,9 @@ public class OrderSagaCoordinator {
                     tenantId,
                     request.getProvider(),
                     ex.getMessage(),
-                    requestId,
+                    correlationId,
                     causationId,
-                    requestId
+                    idempotencyKey
             );
             OrderActionResponse response = OrderActionResponse.builder()
                     .orderId(failed.getId())
@@ -258,13 +243,14 @@ public class OrderSagaCoordinator {
      *
      * @param tenantId tenant owner identifier propagated by trusted gateway
      * @param orderId order identifier targeted by cancel command
-     * @param requestId idempotency key from mandatory request header
+     * @param idempotencyKey idempotency key from mandatory request header
      * @return deterministic cancellation response for first call and retries
      */
-    public OrderActionResponse cancelOrder(Long tenantId, UUID orderId, String requestId) {
+    public OrderActionResponse cancelOrder(Long tenantId, UUID orderId, String idempotencyKey) {
         ensureSagaEnabled("cancelOrder");
         String causationId = UUID.randomUUID().toString();
-        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, requestId, API_CANCEL_ORDER);
+        String correlationId = currentCorrelationId(idempotencyKey);
+        IdempotencyService.Decision decision = idempotencyService.begin(tenantId, idempotencyKey, API_CANCEL_ORDER);
         OrderActionResponse replay = tryReplay(decision.key(), OrderActionResponse.class);
         if (replay != null) {
             return replay;
@@ -280,8 +266,8 @@ public class OrderSagaCoordinator {
             if (current.getStatus() == OrderStatus.RESERVED || current.getStatus() == OrderStatus.PAYMENT_IN_PROGRESS) {
                 inventoryClient.releaseStock(orderId, tenantId);
             }
-            Order cancelled = orderTransactionalService.markCancelled(orderId, tenantId, requestId, causationId, requestId);
-            moveSagaStateIfExists(tenantId, orderId, OrderSagaState.COMPLETED, null);
+            Order cancelled = orderTransactionalService.markCancelled(orderId, tenantId, correlationId, causationId, idempotencyKey);
+            self().moveSagaStateIfExists(tenantId, orderId, OrderSagaState.COMPLETED, null);
             OrderActionResponse response = OrderActionResponse.builder()
                     .orderId(cancelled.getId())
                     .status(cancelled.getStatus().name())
@@ -290,7 +276,7 @@ public class OrderSagaCoordinator {
             idempotencyService.complete(decision.key().getId(), cancelled.getId(), response);
             return response;
         } catch (Exception ex) {
-            moveSagaStateIfExists(tenantId, orderId, OrderSagaState.COMPENSATING, ex.getMessage());
+            self().moveSagaStateIfExists(tenantId, orderId, OrderSagaState.COMPENSATING, ex.getMessage());
             meterRegistry.counter("saga.step.failure", "step", "CANCEL_ORDER").increment();
             throw ex;
         } finally {
@@ -299,10 +285,7 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Resumes in-flight non-terminal sagas to recover from process crash or transient dependency outage.
-     *
-     * @param none scheduler callback without explicit runtime parameters
-     * @return no return; attempts best-effort step replay for each resumable saga row
+     * Resumes in-flight non-terminal sagas to recover from process crashes or transient dependency outages.
      */
     @Scheduled(fixedDelayString = "${saga.resume.delay-ms:5000}")
     @SchedulerLock(name = "order-service-saga-resume", lockAtMostFor = "PT30S", lockAtLeastFor = "PT2S")
@@ -318,21 +301,24 @@ public class OrderSagaCoordinator {
             try {
                 if (saga.getState() == OrderSagaState.RESERVE_STOCK) {
                     Order order = orderTransactionalService.findOrder(saga.getOrderId(), saga.getTenantId());
-                    executeReserveStep(order, saga, saga.getRequestId(), UUID.randomUUID().toString());
+                    String correlationId = currentCorrelationId(saga.getRequestId());
+                    String traceId = currentTraceId(correlationId);
+                    executeReserveStep(order, saga, correlationId, traceId, UUID.randomUUID().toString());
                     continue;
                 }
                 if (saga.getState() == OrderSagaState.CONFIRM_STOCK) {
+                    String correlationId = currentCorrelationId(saga.getRequestId());
                     inventoryClient.confirmStock(saga.getOrderId(), saga.getTenantId());
                     orderTransactionalService.markPaymentSucceeded(
                             saga.getOrderId(),
                             saga.getTenantId(),
                             saga.getPaymentId(),
                             saga.getPaymentProvider(),
-                            saga.getRequestId(),
+                            correlationId,
                             UUID.randomUUID().toString(),
                             saga.getRequestId()
                     );
-                    moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
+                    self().moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
                     continue;
                 }
                 if (saga.getState() == OrderSagaState.COMPENSATING) {
@@ -340,39 +326,30 @@ public class OrderSagaCoordinator {
                 }
             } catch (Exception ex) {
                 meterRegistry.counter("saga.step.failure", "step", "SAGA_RESUME").increment();
-                incrementSagaRetry(saga.getId(), ex.getMessage());
+                self().incrementSagaRetry(saga.getId(), ex.getMessage());
                 log.warn("Saga resume failed sagaId={} orderId={} state={} reason={}", saga.getId(), saga.getOrderId(), saga.getState(), ex.getMessage());
             }
         }
     }
 
     /**
-     * Executes reserve stock side-effect and transitions saga and order atomically per step.
+     * Executes the reserve-stock side effect and transitions saga and order state per step.
      *
-     * @param order order aggregate snapshot used to build reservation request
-     * @param saga persisted saga row tracking current lifecycle step
-     * @param correlationId correlation id propagated to outbox event metadata
-     * @param causationId causation id propagated to outbox event metadata
-     * @return no return; updates order to RESERVED and saga to CHARGE_PAYMENT on success
+     * @param order The order aggregate snapshot used to build the reservation request.
+     * @param saga The persisted saga row that tracks the current lifecycle step.
+     * @param correlationId The correlation id propagated to outbox event metadata.
+     * @param traceId The trace id propagated to downstream reservation request metadata.
+     * @param causationId The causation id propagated to outbox event metadata.
      */
-    /**
-     * executeReserveStep operation.
-     *
-     * @param order input parameter
-     * @param saga input parameter
-     * @param correlationId input parameter
-     * @param causationId input parameter
-     * @return performs side effects defined by this operation
-     */
-    private void executeReserveStep(Order order, OrderSaga saga, String correlationId, String causationId) {
+    private void executeReserveStep(Order order, OrderSaga saga, String correlationId, String traceId, String causationId) {
         // Step contract: AT_LEAST_ONCE delivery, reversible by release, crash-safe by persisted state + idempotent inventory API.
         if (order.getStatus() == OrderStatus.RESERVED || order.getStatus() == OrderStatus.CONFIRMED) {
-            moveSagaState(saga.getId(), OrderSagaState.CHARGE_PAYMENT, null);
+            self().moveSagaState(saga.getId(), OrderSagaState.CHARGE_PAYMENT, null);
             return;
         }
         Timer.Sample timer = Timer.start(meterRegistry);
         try {
-            inventoryClient.reserveStock(order.getId(), order.getTenantId(), toInventoryRequest(order, correlationId));
+            inventoryClient.reserveStock(order.getId(), order.getTenantId(), toInventoryRequest(order, saga.getRequestId(), correlationId, traceId));
             timer.stop(meterRegistry.timer("inventory.reserve.latency", "operation", "reserve"));
             orderTransactionalService.markReservationSucceeded(
                     order.getId(),
@@ -382,10 +359,10 @@ public class OrderSagaCoordinator {
                     causationId,
                     saga.getRequestId()
             );
-            moveSagaState(saga.getId(), OrderSagaState.CHARGE_PAYMENT, null);
+            self().moveSagaState(saga.getId(), OrderSagaState.CHARGE_PAYMENT, null);
         } catch (Exception ex) {
             timer.stop(meterRegistry.timer("inventory.reserve.latency", "operation", "reserve"));
-            moveSagaState(saga.getId(), OrderSagaState.COMPENSATING, ex.getMessage());
+            self().moveSagaState(saga.getId(), OrderSagaState.COMPENSATING, ex.getMessage());
             orderTransactionalService.markReservationFailed(
                     order.getId(),
                     order.getTenantId(),
@@ -405,59 +382,39 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Executes compensating actions for charge-first ordering when confirm step fails.
+     * Executes compensating actions for charge-first ordering when the confirm step fails.
      *
-     * @param tenantId tenant identifier required by external clients
-     * @param orderId order identifier used by compensation side effects
-     * @param saga persisted saga state containing payment id when available
-     * @param reason root error reason to persist in saga diagnostics
-     * @return no return; moves saga to COMPLETED if compensation succeeds
-     */
-    /**
-     * handleCompensation operation.
-     *
-     * @param tenantId input parameter
-     * @param orderId input parameter
-     * @param saga input parameter
-     * @param reason input parameter
-     * @return performs side effects defined by this operation
+     * @param tenantId The tenant identifier required by downstream clients.
+     * @param orderId The order identifier used by compensation side effects.
+     * @param saga The persisted saga state containing the payment id when available.
+     * @param reason The root error reason to persist in saga diagnostics.
      */
     private void handleCompensation(Long tenantId, UUID orderId, OrderSaga saga, String reason) {
         // Step contract: AT_LEAST_ONCE retries, compensation attempts refund then release, crash-safe by persisted paymentId.
-        moveSagaState(saga.getId(), OrderSagaState.COMPENSATING, reason);
+        self().moveSagaState(saga.getId(), OrderSagaState.COMPENSATING, reason);
         try {
             if (saga.getPaymentId() != null) {
                 paymentGatewayService.refund(saga.getPaymentId(), orderId, tenantId);
             }
             inventoryClient.releaseStock(orderId, tenantId);
-            moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
+            self().moveSagaState(saga.getId(), OrderSagaState.COMPLETED, null);
         } catch (Exception compensationEx) {
-            incrementSagaRetry(saga.getId(), compensationEx.getMessage());
+            self().incrementSagaRetry(saga.getId(), compensationEx.getMessage());
             throw compensationEx;
         }
     }
 
     /**
-     * Persists initial saga row in dedicated transaction for crash-safe step continuation.
+     * Persists the initial saga row in a dedicated transaction for crash-safe step continuation.
      *
-     * @param tenantId tenant owner identifier propagated by trusted gateway
-     * @param orderId order identifier tied to saga lifecycle
-     * @param state initial state to execute next
-     * @param requestId idempotency key for command flow
-     * @param provider optional payment provider saved for pay-step resumes
-     * @return persisted saga row
+     * @param tenantId The tenant owner identifier propagated by the trusted gateway.
+     * @param orderId The order identifier tied to the saga lifecycle.
+     * @param state The initial state to execute next.
+     * @param requestId The idempotency key for the command flow.
+     * @param provider The optional payment provider saved for pay-step resumes.
+     * @return Returns the persisted saga row.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    /**
-     * createSaga operation.
-     *
-     * @param tenantId input parameter
-     * @param orderId input parameter
-     * @param state input parameter
-     * @param requestId input parameter
-     * @param provider input parameter
-     * @return createSaga result
-     */
     public OrderSaga createSaga(Long tenantId, UUID orderId, OrderSagaState state, String requestId, String provider) {
         OrderSaga saga = OrderSaga.builder()
                 .tenantId(tenantId)
@@ -471,29 +428,19 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Loads existing saga or creates one when order enters orchestration for first time.
+     * Loads an existing saga or creates one when an order enters orchestration for the first time.
      *
-     * @param tenantId tenant owner identifier propagated by trusted gateway
-     * @param orderId order identifier tied to saga lifecycle
-     * @param state default state used when saga does not exist yet
-     * @param requestId idempotency key for command flow
-     * @param provider payment provider for pay flow resume
-     * @return existing or newly created saga row
+     * @param tenantId The tenant owner identifier propagated by the trusted gateway.
+     * @param orderId The order identifier tied to the saga lifecycle.
+     * @param state The default state used when a saga does not exist yet.
+     * @param requestId The idempotency key for the command flow.
+     * @param provider The payment provider retained for pay-flow resume.
+     * @return Returns the existing or newly created saga row.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    /**
-     * findOrCreateSaga operation.
-     *
-     * @param tenantId input parameter
-     * @param orderId input parameter
-     * @param state input parameter
-     * @param requestId input parameter
-     * @param provider input parameter
-     * @return findOrCreateSaga result
-     */
     public OrderSaga findOrCreateSaga(Long tenantId, UUID orderId, OrderSagaState state, String requestId, String provider) {
         return orderSagaRepository.findByTenantIdAndOrderId(tenantId, orderId)
-                .orElseGet(() -> createSaga(tenantId, orderId, state, requestId, provider));
+                .orElseGet(() -> self().createSaga(tenantId, orderId, state, requestId, provider));
     }
 
     /**
@@ -508,22 +455,13 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Moves saga state deterministically while updating diagnostics for failures and retries.
+     * Moves the saga state deterministically while updating diagnostics for failures and retries.
      *
-     * @param sagaId saga row identifier
-     * @param nextState next finite-state value after step result
-     * @param lastError optional last failure reason
-     * @return no return; persists transition for crash-safe resume
+     * @param sagaId The saga row identifier.
+     * @param nextState The next finite-state value after the step result.
+     * @param lastError The optional last failure reason.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    /**
-     * moveSagaState operation.
-     *
-     * @param sagaId input parameter
-     * @param nextState input parameter
-     * @param lastError input parameter
-     * @return performs side effects defined by this operation
-     */
     public void moveSagaState(Long sagaId, OrderSagaState nextState, String lastError) {
         OrderSaga saga = orderSagaRepository.findById(sagaId).orElseThrow();
         saga.setState(nextState);
@@ -533,24 +471,14 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Moves saga state when saga exists for given order and tenant.
+     * Moves the saga state when a saga exists for the given order and tenant.
      *
-     * @param tenantId tenant scope of saga row
-     * @param orderId order identifier tied to saga lifecycle
-     * @param nextState target state after command execution
-     * @param lastError optional last failure reason
-     * @return no return; updates existing saga and no-ops when saga is absent
+     * @param tenantId The tenant scope of the saga row.
+     * @param orderId The order identifier tied to the saga lifecycle.
+     * @param nextState The target state after command execution.
+     * @param lastError The optional last failure reason.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    /**
-     * moveSagaStateIfExists operation.
-     *
-     * @param tenantId input parameter
-     * @param orderId input parameter
-     * @param nextState input parameter
-     * @param lastError input parameter
-     * @return performs side effects defined by this operation
-     */
     public void moveSagaStateIfExists(Long tenantId, UUID orderId, OrderSagaState nextState, String lastError) {
         orderSagaRepository.findByTenantIdAndOrderId(tenantId, orderId)
                 .ifPresent(saga -> {
@@ -561,22 +489,13 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Stores payment metadata after charge step so confirm can resume safely post-crash.
+     * Stores payment metadata after the charge step so confirm can resume safely after a crash.
      *
-     * @param sagaId saga row identifier
-     * @param paymentId charged payment identifier
-     * @param provider payment provider used for charging and refund compensation
-     * @return no return; transitions saga to CONFIRM_STOCK
+     * @param sagaId The saga row identifier.
+     * @param paymentId The charged payment identifier.
+     * @param provider The payment provider used for charging and refund compensation.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    /**
-     * updateSagaAfterCharge operation.
-     *
-     * @param sagaId input parameter
-     * @param paymentId input parameter
-     * @param provider input parameter
-     * @return performs side effects defined by this operation
-     */
     public void updateSagaAfterCharge(Long sagaId, UUID paymentId, String provider) {
         OrderSaga saga = orderSagaRepository.findById(sagaId).orElseThrow();
         saga.setPaymentId(paymentId);
@@ -587,11 +506,10 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Increments retry count and stores latest error to support operational triage.
+     * Increments the retry count and stores the latest error to support operational triage.
      *
-     * @param sagaId saga row identifier
-     * @param lastError latest failure message from failed step execution
-     * @return no return; updates retry counter and state diagnostics
+     * @param sagaId The saga row identifier.
+     * @param lastError The latest failure message from the failed step execution.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void incrementSagaRetry(Long sagaId, String lastError) {
@@ -675,12 +593,15 @@ public class OrderSagaCoordinator {
     }
 
     /**
-     * Builds reserve request payload from current order snapshot for inventory-service.
+     * Builds the reserve-request payload from the current order snapshot for inventory-service.
      *
-     * @param order order aggregate containing item snapshots and tenant id
-     * @return reserve request payload accepted by inventory internal contract
+     * @param order The order aggregate containing item snapshots and tenant id.
+     * @param idempotencyKey The idempotency key propagated to inventory-service.
+     * @param correlationId The correlation identifier propagated to inventory-service.
+     * @param traceId The trace identifier propagated to inventory-service.
+     * @return Returns the reserve-request payload accepted by the inventory internal contract.
      */
-    private InventoryReserveRequest toInventoryRequest(Order order, String correlationId) {
+    private InventoryReserveRequest toInventoryRequest(Order order, String idempotencyKey, String correlationId, String traceId) {
         return InventoryReserveRequest.builder()
                 .orderId(order.getId())
                 .tenantId(order.getTenantId())
@@ -693,22 +614,58 @@ public class OrderSagaCoordinator {
                 .amount(order.getTotalAmount())
                 .currency(order.getCurrency())
                 .paymentProvider(defaultPaymentProvider)
-                .idempotencyKey(correlationId)
+                .idempotencyKey(idempotencyKey)
                 .correlationId(correlationId)
-                .traceId(correlationId)
+                .traceId(traceId)
                 .build();
     }
 
     /**
-     * Enforces saga kill-switch policy by failing fast when orchestration is disabled.
+     * Resolves the current correlation identifier from MDC and falls back to a stable command key when absent.
      *
-     * @param operation operation name used for explicit failure logs and exception text
-     * @return no return; throws InvalidOrderStateException when kill switch is disabled
+     * @param fallback Stable command or saga key used when request-scoped correlation is unavailable.
+     * @return Returns the effective correlation identifier for downstream calls and events.
+     */
+    private String currentCorrelationId(String fallback) {
+        String correlationId = MDC.get("correlationId");
+        if (correlationId != null && !correlationId.isBlank()) {
+            return correlationId;
+        }
+        return fallback;
+    }
+
+    /**
+     * Resolves the current trace identifier from MDC and falls back to a stable correlation value when absent.
+     *
+     * @param fallback Stable correlation value used when no active trace id exists.
+     * @return Returns the effective trace identifier for downstream metadata.
+     */
+    private String currentTraceId(String fallback) {
+        String traceId = MDC.get("traceId");
+        if (traceId != null && !traceId.isBlank()) {
+            return traceId;
+        }
+        return fallback;
+    }
+
+    /**
+     * Enforces the saga kill-switch policy by failing fast when orchestration is disabled.
+     *
+     * @param operation The operation name used for explicit failure logs and exception text.
      */
     private void ensureSagaEnabled(String operation) {
         if (!sagaEnabled) {
             log.error("Saga execution blocked operation={} because order.saga.enabled=false", operation);
             throw new InvalidOrderStateException("Saga execution disabled by configuration");
         }
+    }
+
+    /**
+     * Resolves the proxied coordinator bean so REQUIRES_NEW transactional methods are invoked through Spring AOP.
+     *
+     * @return Returns the proxied coordinator bean.
+     */
+    private OrderSagaCoordinator self() {
+        return selfProvider.getObject();
     }
 }

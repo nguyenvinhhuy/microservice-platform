@@ -1,0 +1,116 @@
+openapi: 3.1.0
+info:
+  title: Gateway Service API Surface
+  version: 1.0.0
+  description: |
+    Implementation-accurate API surface for gateway-service.
+    This spec documents the routed public path prefixes and the internal fallback endpoint.
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/users:
+    get:
+      summary: Forwarded to user-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/orders:
+    get:
+      summary: Forwarded to order-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/files:
+    get:
+      summary: Forwarded to file-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/notifications:
+    get:
+      summary: Forwarded to notification-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/audit:
+    get:
+      summary: Forwarded to audit-log-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/products:
+    get:
+      summary: Forwarded to product-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/payments:
+    get:
+      summary: Forwarded to payment-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/inventory:
+    get:
+      summary: Forwarded to inventory-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/views/products:
+    get:
+      summary: Forwarded to product-view-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/views/orders:
+    get:
+      summary: Forwarded to order-view-service
+      responses:
+        '200':
+          description: Routed downstream.
+  /api/admin/dlq:
+    get:
+      summary: Forwarded to dlq-replayer-service
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Routed downstream.
+        '403':
+          description: Requires admin role.
+  /__gateway/fallback/{routeId}:
+    get:
+      summary: Circuit-breaker fallback endpoint
+      parameters:
+        - name: routeId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '503':
+          description: Standard fallback payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FallbackResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    FallbackResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        routeId:
+          type: string

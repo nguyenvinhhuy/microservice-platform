@@ -1,0 +1,168 @@
+openapi: 3.1.0
+info:
+  title: Payment Service API
+  version: 1.0.0
+  description: |
+    Implementation-accurate REST contract for payment-service.
+    This spec documents the current code behavior in `payment-service`, including
+    header-only REST request idempotency based on `payments.idempotency_key`.
+servers:
+  - url: http://localhost:8090
+paths:
+  /api/payments:
+    post:
+      summary: Process a payment
+      operationId: processPayment
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Canonical and only REST idempotency header for payment commands.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentProcessRequest'
+      responses:
+        '200':
+          description: Payment created or replayed from existing idempotent aggregate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Validation or domain rule violation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Optimistic locking conflict during concurrent payment mutation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          description: Payment provider timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/payments/{paymentId}:
+    get:
+      summary: Get payment by identifier
+      operationId: getPaymentById
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Payment was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Unexpected server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  schemas:
+    PaymentProcessRequest:
+      type: object
+      description: REST request body for payment processing. Business idempotency is supplied only through the `Idempotency-Key` header.
+      required:
+        - orderId
+        - tenantId
+        - amount
+        - currency
+        - paymentProvider
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        tenantId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+          exclusiveMinimum: 0
+        currency:
+          type: string
+          minLength: 1
+        paymentProvider:
+          type: string
+          minLength: 1
+        correlationId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+    PaymentResponse:
+      type: object
+      required:
+        - paymentId
+        - orderId
+        - status
+        - provider
+        - idempotencyKey
+      properties:
+        paymentId:
+          type: string
+          format: uuid
+          nullable: true
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - PENDING
+            - PROCESSING
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+        provider:
+          type: string
+        transactionId:
+          type: string
+          nullable: true
+        idempotencyKey:
+          type: string
+          description: Persisted payment aggregate idempotency key originally received from the required `Idempotency-Key` header.
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+        - timestamp
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time

@@ -51,11 +51,11 @@ public class OrderService {
      * Creates an order using saga orchestration with idempotency and product validation protections.
      *
      * @param request Validated create-order request payload.
-     * @param requestId Mandatory idempotency key from API header.
+     * @param idempotencyKey Mandatory idempotency key from API header.
      * @return Returns a deterministic create response produced by saga orchestration.
      */
     @PreAuthorize("hasRole('USER')")
-    public CreateOrderResponse createOrder(CreateOrderRequest request, String requestId) {
+    public CreateOrderResponse createOrder(CreateOrderRequest request, String idempotencyKey) {
         ensureOrderFeatureEnabled("createOrder");
         Long tenantId = requireTenantId();
         Long userId = requireUserId();
@@ -63,7 +63,7 @@ public class OrderService {
             validateAndNormalizeProductPrices(tenantId, request);
         }
         try {
-            CreateOrderResponse response = orderSagaCoordinator.createOrder(tenantId, userId, request, requestId);
+            CreateOrderResponse response = orderSagaCoordinator.createOrder(tenantId, userId, request, idempotencyKey);
             ordersCreatedTotal.increment();
             return response;
         } catch (RuntimeException ex) {
@@ -77,28 +77,28 @@ public class OrderService {
      *
      * @param orderId Target order identifier from API path.
      * @param request Validated pay request payload.
-     * @param requestId Mandatory idempotency key from API header.
+     * @param idempotencyKey Mandatory idempotency key from API header.
      * @return Returns a deterministic action response produced by saga orchestration.
      */
     @PreAuthorize("hasRole('USER')")
-    public OrderActionResponse payOrder(UUID orderId, PayOrderRequest request, String requestId) {
+    public OrderActionResponse payOrder(UUID orderId, PayOrderRequest request, String idempotencyKey) {
         ensureOrderFeatureEnabled("payOrder");
         Long tenantId = requireTenantId();
-        return orderSagaCoordinator.payOrder(tenantId, orderId, request, requestId);
+        return orderSagaCoordinator.payOrder(tenantId, orderId, request, idempotencyKey);
     }
 
     /**
      * Delegates cancel command execution to persisted saga coordinator boundary.
      *
      * @param orderId Target order identifier from API path.
-     * @param requestId Mandatory idempotency key from API header.
+     * @param idempotencyKey Mandatory idempotency key from API header.
      * @return Returns a deterministic action response produced by saga orchestration.
      */
     @PreAuthorize("hasRole('ADMIN')")
-    public OrderActionResponse cancelOrder(UUID orderId, String requestId) {
+    public OrderActionResponse cancelOrder(UUID orderId, String idempotencyKey) {
         ensureOrderFeatureEnabled("cancelOrder");
         Long tenantId = requireTenantId();
-        return orderSagaCoordinator.cancelOrder(tenantId, orderId, requestId);
+        return orderSagaCoordinator.cancelOrder(tenantId, orderId, idempotencyKey);
     }
 
     /**

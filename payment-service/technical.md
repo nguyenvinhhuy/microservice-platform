@@ -237,14 +237,18 @@ created_at
 
 # 6. Idempotency Design
 
-All write APIs must require:
+All write APIs must require a dedicated business idempotency contract.
 
-Idempotency-Key header.
+For the current REST payment command implementation, that contract is the
+`Idempotency-Key` header.
 
 Example:
 
 POST /payments
 Idempotency-Key: uuid
+
+Tracing headers such as `X-Request-Id` are complementary observability data and
+must not replace the business idempotency key.
 
 Storage:
 

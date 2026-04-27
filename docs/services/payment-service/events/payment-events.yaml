@@ -1,0 +1,180 @@
+asyncapi: 3.0.0
+info:
+  title: Payment Service Events
+  version: 1.0.0
+  description: |
+    Implementation-accurate event contract for payment-service.
+    All events are emitted through the payment outbox and published to `payment.events`.
+channels:
+  payment.events:
+    address: payment.events
+    messages:
+      paymentProcessing:
+        $ref: '#/components/messages/PaymentProcessingMessage'
+      paymentCompleted:
+        $ref: '#/components/messages/PaymentCompletedMessage'
+      paymentFailed:
+        $ref: '#/components/messages/PaymentFailedMessage'
+operations:
+  publishPaymentProcessing:
+    action: send
+    channel:
+      $ref: '#/channels/payment.events'
+    messages:
+      - $ref: '#/components/messages/PaymentProcessingMessage'
+  publishPaymentCompleted:
+    action: send
+    channel:
+      $ref: '#/channels/payment.events'
+    messages:
+      - $ref: '#/components/messages/PaymentCompletedMessage'
+  publishPaymentFailed:
+    action: send
+    channel:
+      $ref: '#/channels/payment.events'
+    messages:
+      - $ref: '#/components/messages/PaymentFailedMessage'
+components:
+  messages:
+    PaymentProcessingMessage:
+      name: payment.processing
+      title: Payment processing started
+      payload:
+        $ref: '#/components/schemas/PaymentProcessingEnvelope'
+    PaymentCompletedMessage:
+      name: payment.completed
+      title: Payment completed
+      payload:
+        $ref: '#/components/schemas/PaymentCompletedEnvelope'
+    PaymentFailedMessage:
+      name: payment.failed
+      title: Payment failed
+      payload:
+        $ref: '#/components/schemas/PaymentFailedEnvelope'
+  schemas:
+    BaseEnvelope:
+      type: object
+      required:
+        - eventId
+        - eventType
+        - source
+        - eventTime
+        - aggregateId
+        - aggregateVersion
+        - dataSchema
+        - data
+      properties:
+        eventId:
+          type: string
+        eventType:
+          type: string
+        source:
+          type: string
+          const: payment-service
+        eventTime:
+          type: string
+          format: date-time
+        aggregateId:
+          type: string
+        aggregateVersion:
+          type: integer
+          format: int64
+        dataSchema:
+          type: string
+        traceId:
+          type: string
+          nullable: true
+        correlationId:
+          type: string
+          nullable: true
+        causationId:
+          type: string
+          nullable: true
+    PaymentProcessingEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            eventType:
+              const: payment.processing
+            dataSchema:
+              const: payment.processing.v1
+            data:
+              $ref: '#/components/schemas/PaymentProcessingData'
+    PaymentCompletedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            eventType:
+              const: payment.completed
+            dataSchema:
+              const: payment.completed.v1
+            data:
+              $ref: '#/components/schemas/PaymentCompletedData'
+    PaymentFailedEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            eventType:
+              const: payment.failed
+            dataSchema:
+              const: payment.failed.v1
+            data:
+              $ref: '#/components/schemas/PaymentFailedData'
+    PaymentProcessingData:
+      type: object
+      required:
+        - orderId
+        - paymentId
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        tenantId:
+          type: integer
+          format: int64
+          nullable: true
+    PaymentCompletedData:
+      type: object
+      required:
+        - orderId
+        - paymentId
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        tenantId:
+          type: integer
+          format: int64
+          nullable: true
+        transactionId:
+          type: string
+          nullable: true
+    PaymentFailedData:
+      type: object
+      required:
+        - orderId
+        - paymentId
+        - reason
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        tenantId:
+          type: integer
+          format: int64
+          nullable: true
+        reason:
+          type: string
+

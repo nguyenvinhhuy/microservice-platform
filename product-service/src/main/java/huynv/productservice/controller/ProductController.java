@@ -5,6 +5,7 @@ import huynv.productservice.model.IdempotencyKey;
 import huynv.productservice.model.ProductStatus;
 import huynv.productservice.service.IdempotencyService;
 import huynv.productservice.service.ProductService;
+import huynv.productservice.web.ProductIdempotencyKeyResolver;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,7 +32,10 @@ public class ProductController {
     @PreAuthorize("hasRole('ROLE_ADMIN')")
     public ResponseEntity<Void> createProduct(
             @Valid @RequestBody ProductDTO productRequest,
-            @RequestHeader(value = "X-Request-Id", required = false) UUID requestId) {
+            @RequestHeader(value = ProductIdempotencyKeyResolver.IDEMPOTENCY_KEY_HEADER, required = false) UUID idempotencyKeyHeader,
+            @RequestHeader(value = ProductIdempotencyKeyResolver.REQUEST_ID_HEADER, required = false) UUID requestIdHeader) {
+
+        UUID requestId = ProductIdempotencyKeyResolver.resolve(idempotencyKeyHeader, requestIdHeader);
 
         if (requestId != null) {
             Optional<IdempotencyKey> existingKey = idempotencyService.getKey(requestId);

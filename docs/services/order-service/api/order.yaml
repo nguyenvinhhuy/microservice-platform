@@ -1,0 +1,319 @@
+openapi: "3.0.3"
+info:
+  title: order-service
+  version: "1.0.0"
+  description: >
+    Order command API backed by order-service. This contract reflects the
+    current implementation, including deterministic idempotent replays and
+    saga-driven payment behavior.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: orders
+    description: Order command endpoints.
+
+paths:
+  /orders:
+    post:
+      tags: [orders]
+      summary: Create an order.
+      description: >
+        Creates an order, reserves stock synchronously, and returns 201 only
+        after the reservation step succeeds. `Idempotency-Key` is the canonical
+        write-command deduplication header. `X-Request-Id` is preserved for
+        transport tracing and accepted only as a temporary backward-compatible
+        fallback while callers migrate. If the same request is already in
+        flight, the service returns a deterministic processing payload.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRoles"
+        - $ref: "#/components/parameters/XCorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderRequest"
+      responses:
+        "201":
+          description: Order reserved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateOrderResponse"
+        "400":
+          description: Validation failure or missing trusted identity header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid state, domain invariant violation, or inventory reservation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected runtime failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Downstream dependency unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/pay:
+    post:
+      tags: [orders]
+      summary: Pay an order.
+      description: >
+        Starts or resumes the charge and confirm saga. Payment is charged first,
+        then inventory is confirmed. `Idempotency-Key` is the canonical command
+        header. `X-Request-Id` remains tracing-only by design and is accepted
+        only as a temporary backward-compatible fallback. In-flight duplicate
+        requests return a deterministic processing response.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRoles"
+        - $ref: "#/components/parameters/XCorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayOrderRequest"
+      responses:
+        "200":
+          description: Payment flow completed or replayed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderActionResponse"
+        "400":
+          description: Validation failure or missing trusted identity header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "402":
+          description: Payment failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found for tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid state, domain invariant violation, inventory failure, or concurrency conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected runtime failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Downstream dependency unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /orders/{orderId}/cancel:
+    post:
+      tags: [orders]
+      summary: Cancel an order.
+      description: >
+        Cancels an order. If the current status is `RESERVED` or
+        `PAYMENT_IN_PROGRESS`, inventory is released first. `Idempotency-Key`
+        is the canonical command header. `X-Request-Id` is tracing-only by
+        design and is accepted only as a temporary backward-compatible
+        fallback.
+      parameters:
+        - $ref: "#/components/parameters/OrderId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/XRequestId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserId"
+        - $ref: "#/components/parameters/XRoles"
+        - $ref: "#/components/parameters/XCorrelationId"
+      responses:
+        "200":
+          description: Order cancelled or replayed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderActionResponse"
+        "400":
+          description: Missing trusted identity header or bad request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found for tenant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Invalid state, confirmed-order cancel, inventory release failure, or concurrency conflict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Unexpected runtime failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Downstream dependency unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    XTenantId:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+    XUserId:
+      name: X-User-Id
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+    XRoles:
+      name: X-Roles
+      in: header
+      required: true
+      schema:
+        type: string
+    XRequestId:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Transport tracing header. Also accepted temporarily as a compatibility fallback when `Idempotency-Key` is absent.
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Canonical business idempotency header for mutating commands. `X-Request-Id` is accepted only as a temporary compatibility fallback for legacy callers.
+      schema:
+        type: string
+    XCorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema:
+        type: string
+
+  schemas:
+    OrderItemRequest:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+        quantity:
+          type: integer
+          minimum: 1
+        price:
+          type: number
+          minimum: 0.01
+      required: [productId, quantity, price]
+
+    CreateOrderRequest:
+      type: object
+      properties:
+        currency:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderItemRequest"
+      required: [currency, items]
+
+    PayOrderRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+      required: [provider]
+
+    CreateOrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required: [orderId, status]
+
+    OrderActionResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+        message:
+          type: string
+      required: [orderId, status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        retryable:
+          type: boolean

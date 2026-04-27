@@ -36,18 +36,18 @@ public class PaymentGatewayService {
      * @param amount Order total amount captured for settlement.
      * @param orderId Order identifier used for traceability and idempotency keys.
      * @param tenantId Tenant owner id used to avoid cross-tenant side effects.
+     * @param idempotencyKey Dedicated command idempotency key forwarded to payment-service.
+     * @param correlationId Correlation identifier used for cross-service tracing.
      * @return Returns the payment identifier persisted by payment-service.
      */
     @Transactional(readOnly = true)
-    public UUID charge(String provider, BigDecimal amount, UUID orderId, Long tenantId) {
+    public UUID charge(String provider, BigDecimal amount, UUID orderId, Long tenantId, String idempotencyKey, String correlationId) {
         if (!paymentEnabled) {
             throw new PaymentFailedException("Payment feature disabled for order " + orderId);
         }
 
         huynv.orderservice.domain.Order order = orderTransactionalService.findOrder(orderId, tenantId);
         String requestId = org.slf4j.MDC.get("requestId");
-        String idempotencyKey = requestId != null && !requestId.isBlank() ? requestId : UUID.randomUUID().toString();
-        String correlationId = idempotencyKey;
 
         huynv.orderservice.dto.PaymentResponse response = paymentClient.charge(
                 orderId,
@@ -56,7 +56,8 @@ public class PaymentGatewayService {
                 order.getCurrency(),
                 provider,
                 idempotencyKey,
-                correlationId
+                correlationId,
+                requestId
         );
         if (response == null || response.paymentId() == null) {
             throw new PaymentFailedException("Payment-service returned an empty response for order " + orderId);

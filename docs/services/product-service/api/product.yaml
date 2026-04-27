@@ -1,0 +1,610 @@
+openapi: "3.0.3"
+info:
+  title: product-service
+  version: "1.0.0"
+  description: >
+    Product catalog API backed by product-service.
+    This contract reflects the current implementation exactly, including the
+    fact that several business failures are still surfaced as HTTP 500.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: products
+    description: Public product catalog endpoints.
+  - name: internal
+    description: Trusted internal service-to-service endpoints.
+
+paths:
+  /api/v1/products:
+    post:
+      tags: [products]
+      summary: Create a product.
+      description: >
+        Creates a product for the current tenant. The request body must include
+        `tenantId` and `status` because of current bean validation, but the
+        service overwrites tenant ownership from request context and always
+        persists `status = DRAFT`. `Idempotency-Key` is the canonical create
+        deduplication header. `X-Request-Id` remains the tracing header and is
+        accepted only as a temporary backward-compatible fallback. If the
+        effective key already exists, the controller returns only the cached
+        HTTP status.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyOptional"
+        - $ref: "#/components/parameters/XRequestIdOptional"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XUserIdOptional"
+        - $ref: "#/components/parameters/XRoles"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+      responses:
+        "201":
+          description: Product created. Response body is empty.
+        "400":
+          description: Bean validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Quota exceeded or access denied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Current implementation uses HTTP 500 for runtime business failures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      tags: [products]
+      summary: List products.
+      parameters:
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: sort
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated product list excluding `DELETED`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
+        "500":
+          description: Runtime service failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/products/{id}:
+    get:
+      tags: [products]
+      summary: Get one product by id.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Product found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "500":
+          description: Current implementation returns 500 when the product is missing or deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      tags: [products]
+      summary: Update a product.
+      description: >
+        Updates mutable fields of a non-deleted product. Always emits
+        `product.updated`. Emits `product.price.updated` when `price` or
+        `currency` changes.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductRequest"
+      responses:
+        "200":
+          description: Product updated. Response body is empty.
+        "400":
+          description: Bean validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Current implementation returns 500 for not found and duplicate business failures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [products]
+      summary: Soft-delete a product.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "204":
+          description: Product soft-deleted. Response body is empty.
+        "500":
+          description: Current implementation returns 500 when the product is missing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/products/code/{code}:
+    get:
+      tags: [products]
+      summary: Get one product by code.
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Product found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "500":
+          description: Current implementation returns 500 when the product is missing or deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/products/slug/{slug}:
+    get:
+      tags: [products]
+      summary: Get one product by slug.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Product found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "500":
+          description: Current implementation returns 500 when the product is missing or deleted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/products/search:
+    get:
+      tags: [products]
+      summary: Search products by keyword.
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Paginated search result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
+
+  /api/v1/products/status/{status}:
+    get:
+      tags: [products]
+      summary: List products by status with pagination.
+      parameters:
+        - $ref: "#/components/parameters/ProductStatusPath"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Paginated status result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
+
+  /api/v1/products/status-list/{status}:
+    get:
+      tags: [products]
+      summary: List products by status without pagination.
+      parameters:
+        - $ref: "#/components/parameters/ProductStatusPath"
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Product list for the given status.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductResponse"
+
+  /api/v1/products/category/{categoryId}:
+    get:
+      tags: [products]
+      summary: List products by category.
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Paginated category result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
+
+  /api/v1/products/price-range:
+    get:
+      tags: [products]
+      summary: List products by price range.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProductStatus"
+            default: ACTIVE
+        - name: minPrice
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: maxPrice
+          in: query
+          required: true
+          schema:
+            type: number
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - $ref: "#/components/parameters/XTenantId"
+        - $ref: "#/components/parameters/XRoles"
+      responses:
+        "200":
+          description: Paginated price range result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPage"
+
+  /internal/products/{id}:
+    get:
+      tags: [internal]
+      summary: Internal trusted product lookup.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+        - $ref: "#/components/parameters/XTenantId"
+      responses:
+        "200":
+          description: Product snapshot used by internal orchestration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductResponse"
+        "500":
+          description: Missing product or runtime service failure.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  parameters:
+    ProductId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ProductStatusPath:
+      name: status
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/ProductStatus"
+    XTenantId:
+      name: X-Tenant-Id
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+    XUserIdOptional:
+      name: X-User-Id
+      in: header
+      required: false
+      schema:
+        type: integer
+        format: int64
+    XRoles:
+      name: X-Roles
+      in: header
+      required: true
+      schema:
+        type: string
+    XRequestIdOptional:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: Transport tracing header. Also accepted temporarily as a compatibility fallback for create requests when `Idempotency-Key` is absent.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKeyOptional:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Canonical UUID header for create-command deduplication. `X-Request-Id` is accepted only as a temporary compatibility fallback for legacy callers.
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    ProductStatus:
+      type: string
+      enum: [DRAFT, ACTIVE, OUT_OF_STOCK, INACTIVE, DELETED]
+
+    ProductImage:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        url:
+          type: string
+        primary:
+          type: boolean
+        sortOrder:
+          type: integer
+      required: [url, primary, sortOrder]
+
+    ProductAttribute:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        value:
+          type: string
+      required: [name, value]
+
+    ProductPrice:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        price:
+          type: number
+        currency:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+          nullable: true
+      required: [price, currency, validFrom]
+
+    ProductRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        code:
+          type: string
+          maxLength: 50
+        name:
+          type: string
+          maxLength: 255
+        slug:
+          type: string
+          maxLength: 255
+        shortDescription:
+          type: string
+          maxLength: 500
+        description:
+          type: string
+        brand:
+          type: string
+          maxLength: 100
+        categoryId:
+          type: integer
+          format: int64
+        price:
+          type: number
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        status:
+          $ref: "#/components/schemas/ProductStatus"
+        thumbnailUrl:
+          type: string
+        ratingAverage:
+          type: number
+        ratingCount:
+          type: integer
+        tenantId:
+          type: integer
+          format: int64
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductImage"
+        attributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductAttribute"
+        priceHistory:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductPrice"
+      required:
+        - code
+        - name
+        - slug
+        - categoryId
+        - price
+        - currency
+        - status
+        - tenantId
+
+    ProductResponse:
+      allOf:
+        - $ref: "#/components/schemas/ProductRequest"
+        - type: object
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+            createdBy:
+              type: string
+            updatedAt:
+              type: string
+              format: date-time
+            updatedBy:
+              type: string
+
+    ProductPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductResponse"
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        size:
+          type: integer
+        number:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: string
+        path:
+          type: string
+        traceId:
+          type: string

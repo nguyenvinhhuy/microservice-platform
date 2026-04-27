@@ -4,77 +4,17 @@
 - Applies to all code generated or modified by agents in this repository.
 - Preserve existing project structure and package layout.
 - Keep changes minimal, deterministic, and production-safe.
-
-## Java Method Comment Rule (Mandatory)
-- Every non-trivial method must use JavaDoc block format directly above the method.
-- If a method/constructor has annotations, the JavaDoc block must be placed above the first annotation (i.e., JavaDoc must be the top-most block for that method/constructor).
-- The block must match this exact structure and placeholders must be replaced with meaningful text:
-```java
-/**
- * Describes the purpose of the method and the action it performs.
- *
- * @param <paramName> Description of the parameter.
- * @param <paramName> Description of another parameter (if applicable).
- * @return Description of the return value or side effects (even for void methods).
- */
-```
-- Do not keep placeholder tokens like `<short description>`, `<paramName>`, or `<short meaning>` in committed code.
-- If method is `void`, `@return` is still mandatory and must describe side effects.
-- Exactly one blank JavaDoc line (` *`) is required between description and first tag.
-- Description line must be a complete sentence and must end with a period.
-- `@param` and `@return` lines must be complete sentences and must end with a period.
-- Placeholder text is forbidden. Do not use values like:
-  - `operation`
-  - `input parameter`
-  - `result`
-  - `performs side effects defined by this operation`
-- Do not use old comment style `// Function / // Param / // Return`.
-
-## JavaDoc Consistency (Mandatory)
-- Use one style consistently in the repository:
-  - Full-sentence style with ending period for description, `@param`, and `@return`.
-- Do not mix styles in the same block (for example: description has period but tags do not).
-- Constructor JavaDoc must still include `@return` with side-effect summary text (per this repository convention).
+- Treat this file as the single authoritative repository standard for architecture, coding conventions, verification, and agent behavior.
 
 ## Agent Read Protocol (Mandatory)
 - Before making any code change, the agent must:
   1. Read `AGENTS.md` fully.
-  2. Output a short "Rule-Check" summary listing rules applied for the current task.
+  2. Output a short `Rule-Check` summary listing the rules applied for the current task.
   3. Define pass/fail verification commands before editing.
-- Before final answer, the agent must output a short "Compliance Check" stating:
+- Before the final answer, the agent must output a short `Compliance Check` stating:
   - Which mandatory rules were checked.
   - Which commands were run.
   - Pass/fail result.
-
-## Naming and API Contract
-- Use intention-revealing names; avoid abbreviations except common acronyms.
-- Keep method signatures stable unless a bug fix requires change.
-- Keep backward compatibility for event payload fields and public APIs.
-
-## Multi-Tenancy and Data Safety
-- All repository query methods must be tenant-aware where business data is involved.
-- Service layer must validate tenant ownership before mutating state.
-- Never read/update cross-tenant data in request flow.
-
-## Concurrency and Idempotency
-- Handle optimistic locking conflicts with domain exception mapped to HTTP 409.
-- Reserve/confirm/release flows must be idempotent for repeated requests.
-- Prefer explicit state checks before mutation.
-
-## Observability
-- Include `tenantId`, `orderId`, and `productId` in MDC where available.
-- Always clear MDC and thread-local context after request/operation completion.
-- Keep logs structured, concise, and correlation-friendly.
-
-## Scheduler and Distributed Lock
-- Scheduled jobs that mutate business state must use ShedLock.
-- Ensure lock name is stable and unique per job.
-- Do not run critical scheduled mutation without lock protection.
-
-## Testing and Verification
-- For each meaningful change, run at least module-level compile or tests.
-- Keep test profile isolated from external dependencies.
-- Add/adjust tests for bug-fix behavior when practical.
 
 ## Report Rule (Mandatory)
 - After every completed agent execution, write a summary to `REPORT.md` as follows:
@@ -86,92 +26,289 @@
      - Short description of the changes.
 - Historical entries and version notes must remain intact for traceability.
 
-## Build & Verification (Mandatory)
-- **Tech Stack**: Spring Boot 4.0.2, Java 25, Maven (aggregator `pom.xml` at root).
-- **Build Command**: `mvn clean verify` (full stack) or `mvn -q -pl <module-name> -am verify` (single module + dependencies).
-- **Module Dependencies**:
-  - All services depend on `event-contract` (1.0.0) for shared event envelopes, canonical event payloads, and JSON schemas.
-  - Event-producing services (order, payment, inventory, product, notification) depend on `event-infra` (1.0.0) for Kafka outbox, retry, DLQ, tracing, and resilience support.
-  - Always declare explicit dependency versions in `pom.xml`.
-- **Module Structure**: `src/main/java` packages follow `huynv.<service-name>` (e.g., `huynv.orderservice`, `huynv.paymentservice`); shared modules use `huynv.event`, `huynv.eventinfra`.
+## JavaDoc Rule (Mandatory)
+- Every non-trivial method and constructor must use a JavaDoc block directly above the declaration.
+- If annotations are present, the JavaDoc block must be above the first annotation.
+- The block must follow this exact structure and all placeholders must be replaced with meaningful text:
+```java
+/**
+ * Describes the purpose of the method and the action it performs.
+ *
+ * @param <paramName> Description of the parameter.
+ * @param <paramName> Description of another parameter (if applicable).
+ * @return Description of the return value or side effects (even for void methods).
+ */
+```
+- If the method is `void`, `@return` is still mandatory and must describe the side effects.
+- Exactly one blank JavaDoc line (` *`) is required between the description and the first tag.
+- The description line, every `@param`, and `@return` line must be full sentences ending with a period.
+- Placeholder text is forbidden.
+- Do not use old inline comment styles such as `// Function`, `// Param`, or `// Return`.
+- Use one consistent full-sentence JavaDoc style repository-wide.
 
-## Event-Driven Architecture (Mandatory)
-- **Event Contract**: All Kafka events are enveloped as `BaseEvent<T>` defined in `event-contract` where `T` is the business payload (e.g., `PaymentCompletedEvent`).
-- **Envelope Structure**: `eventId` (globally unique ULID), `eventType` (canonical topic name), `eventVersion`, `tenantId`, `correlationId`, `causationId`, `timestamp`, `data`.
-- **Consumer Pattern**: Consumers are registered via `@ConditionalOnProperty` and `@Component` classes with explicit `objectMapper.readValue()` parsing; NOT using `@KafkaListener` annotations.
-- **Consumer Idempotency** (Mandatory):
-  - Kafka consumers must check `processed_events(event_id, consumer_service)` before processing.
-  - Use `JdbcIdempotencyService` injected from `IdempotencyConfig` to call `alreadyProcessed(eventId)` and `markProcessed(eventId)` within the same transaction as side effects.
-  - Record markers in the same database transaction as the business mutation to ensure atomicity.
-  - Failure to enforce consumer idempotency will result in duplicate event processing across retries and rebalances.
-- **Event Schemas**: JSON schemas are classpath-loaded from `event-contract/src/main/resources/schemas/` and validated during deserialization via `JsonSchemaValidationService`.
-- **DLQ & Retry Handling**:
-  - Failed Kafka messages are routed to `<topic>-dlq` by the listener container error handler.
-  - Services do NOT retry indefinitely; instead, exhausted retries transition messages to DLQ.
-  - DLQ replay is opt-in and must be enabled explicitly via configuration and is delegated to `DlqReplayService` in `event-infra`.
+## Platform Architecture Standard
 
-## Saga Orchestration & Cross-Service Flows (Mandatory)
-- **Pattern**: Order-centric orchestration uses a state machine (`OrderSagaState`: RESERVE_STOCK → CHARGE_PAYMENT → CONFIRM_STOCK → COMPLETED or COMPENSATING).
-- **Saga Persistence**: Each saga is persisted in a dedicated `<service>_sagas` table with state, retry count, error message, and resumable step metadata.
-- **Step Atomicity**: Each step is guarded by `@Transactional(propagation = Propagation.REQUIRES_NEW)` to ensure crash-safe resume on container restart.
-- **Compensating Transactions**: On failure, attempt refund (if paymentId exists) then release reservation. Persistence of `paymentId` before confirm step enables safe recovery.
-- **Saga Resume**: Scheduled background task (`SagaResumeService` or equivalent) scans for in-flight sagas and executes next step idempotently.
-- **Saga Testing**: Include unit tests that verify saga state transitions, compensation attempts, and crash-safe step resume scenarios.
+### Project Overview
+- This repository hosts a production-grade microservice platform designed around isolated business capabilities, independent deployment, and operational resilience.
+- Core domains include gateway, order, payment, inventory, product, notification, audit logging, and projection/read-model services.
+- The platform is multi-tenant, event-driven, and built to tolerate retries, replays, partial downstream failures, and asynchronous consistency.
 
-## Request Idempotency (Mandatory)
-- **Scope**: REST command endpoints (create, pay, cancel) must enforce idempotency via `idempotencyKey` header or request field.
-- **Implementation**:
-  - Check `IdempotencyKey(key, status, response)` table at command start; if exists and COMPLETED, return cached response; if PROCESSING, return deterministic in-flight response.
-  - On start: insert row with status PROCESSING.
-  - On success: update row to COMPLETED and store serialized response.
-  - On failure: update row to FAILED and store error response.
-- **Deterministic In-Flight Responses**: For order creation, construct response with orderId from the idempotency key row so repeated calls never generate 409 conflicts.
-- **TTL**: Idempotency rows should be purged after ~24 hours via a scheduled job to prevent unbounded table growth.
+### Architecture Style
+- External traffic enters through `gateway-service`.
+- The current gateway route map in `gateway-service/src/main/resources/application.yml` fronts `user-service`, `order-service`, `file-service`, `notification-service`, `audit-log-service`, `product-service`, `payment-service`, `inventory-service`, `product-view-service`, `order-view-service`, and `dlq-replayer-service`.
+- Synchronous service interaction uses REST and, where appropriate, gRPC.
+- Asynchronous integration uses Kafka with canonical event envelopes from `event-contract`.
+- Business events must be emitted through the transactional outbox pattern.
+- Domain services own their own persistence and must not read or write each other's databases directly.
+- Projection services such as `order-view-service` and `product-view-service` exist to support query-optimized read models.
 
-## Kafka Event Publishing (Mandatory)
-- **Transactional Outbox Pattern**: Never publish events directly to Kafka. Instead:
-  1. Insert business entity (Order, Payment, etc.) into main table.
-  2. Insert corresponding `OutboxEvent` into `<service>_outbox` table with status PENDING, topic, key, and serialized envelope.
-  3. Commit transaction atomically.
-- **Outbox Publisher Loop**: Scheduled service (`KafkaOutboxPublisher` or equivalent) polls PENDING outbox rows, publishes to Kafka, and transitions to SENT on broker acknowledgment.
-- **At-Least-Once Semantics**: SENT rows are retained until explicity purged; if the publisher crashes before updating state, the next poll republishes the same row with the same key, resulting in idempotent replay.
-- **Retry Budget**: Outbox messages that fail repeatedly (e.g., poisoned JSON or broker unavailability) are exhausted to DLQ after a configured retry limit.
-- **Idempotent Keys**: Outbox rows use (tenantId, entity-id, event-type) as the Kafka message key to guarantee ordering per tenant and entity.
+### Tech Stack
+- Backend: Spring Boot 4.0.6, Java 25, Spring Data JPA, Spring Kafka, Spring Cloud Gateway, gRPC, ShedLock, Micrometer, OpenTelemetry.
+- Frontend: Angular 21, TypeScript 5.9, RxJS, Tailwind CSS.
+- Data and infrastructure: PostgreSQL per service, Redis, Kafka, Apicurio Registry (`schema-registry` in `docker-compose.yml`), MinIO, Docker, Kubernetes, Jenkins, Prometheus, Grafana, Keycloak.
+- Build system: Maven aggregator at root `pom.xml`.
 
-## Multi-Tenancy & Data Safety (Mandatory - Extends Existing)
-- **Context Extraction**: Servlet filters (`UserContextFilter`) extract `X-Tenant-Id`, `X-User-Id`, `X-Roles`, `X-Request-Id`, `X-Correlation-Id` headers and populate `UserContext` thread-local and MDC.
-- **MDC Cleanup**: After request completion, explicitly clear MDC to prevent cross-request contamination in thread pools.
-- **Gateway Trust Boundary**: `TrustedRequestContextFilter` in gateway strips inbound identity headers and reinjected trusted values from validated JWT tokens. Services must NOT directly trust `X-Tenant-Id` headers from external clients; only from gateway.
-- **Repository Queries**: All queries must filter by tenantId; use repository methods like `findByTenantIdAndStatus()` rather than `findAll()`.
-- **Query Annotations**: For complex queries, annotate with tenant-scoping via JPA named queries or Spring Data query methods explicitly including tenantId condition.
+### Repository Structure
+- `angular-fe/`: Frontend application and browser-facing assets.
+- `gateway-service/`: Edge gateway, auth propagation, rate limiting, routing, and cross-cutting edge policy.
+- `<domain>-service/`: Domain-owned write services and business logic.
+- `*-view-service/`: Query-optimized read-model projections.
+- `dlq-replayer-service/`: Controlled replay of dead-letter messages.
+- `event-contract/`: Shared event envelopes, payloads, and JSON schemas.
+- `event-infra/`: Shared Kafka, outbox, retry, and DLQ support infrastructure.
+- `docs/services/<service>/README.md`: Implementation-accurate service guides for the current core services; prefer these over older high-level module `README.md` files when behavior conflicts.
+- `user-service/` and `file-service/`: Legacy/standalone service modules still routed by `gateway-service`, but not included in the root Maven aggregator `pom.xml` or the `docs/services/` set.
+- `docs/`: Architecture, service, API, event, and database documentation.
+- `monitoring/`: Prometheus and Grafana assets.
+- `k8s/`: Kubernetes manifests and deployment descriptors.
 
-## Observability & Tracing (Mandatory - Extends Existing)
-- **OpenTelemetry Integration**: Services auto-configure OTel via Spring Boot starter; spans are created automatically for HTTP, Kafka, and database operations.
-- **Span Annotations**: For custom business logic, use `@WithSpan` or programmatic span creation to demarcate critical paths (e.g., saga step execution, payment provider calls).
-- **Trace Context Propagation**: MDC and OTel context are automatically propagated across service boundaries via `MdcPropagationExchangeFilter` and Kafka headers.
-- **Structured Logging**: Log JSON payloads with tags (tenantId, orderId, productId, eventId, sagaId, paymentId) instead of unstructured strings.
-- **Health & Metrics**:
-  - `/actuator/health`: Liveness, readiness, and segment probes.
-  - `/actuator/prometheus`: Micrometer metrics tagged with `application=<service-name>`, `tenantId`, `operation`, etc.
-  - Outbox and DLQ depths must be published as gauges for alerting.
+## Engineering Standards (Mandatory)
 
-## Concurrency & Locking (Mandatory - Extends Existing)
-- **Optimistic Locking**: Use Hibernate `@Version` on aggregate roots (Order, Payment, Product). Update conflicts trigger `OptimisticLockingFailureException` → HTTP 409.
-- **Pessimistic Locking**: For critical sagas, use `SELECT ... FOR UPDATE SKIP LOCKED` in custom queries (e.g., `lockReadyBatch()`) to prevent concurrent saga step execution.
-- **ShedLock**: Scheduled jobs that mutate business state (saga resume, outbox publisher, DLQ replay) must use ShedLock with stable lock names (e.g., `order-saga-resume`, `outbox-publisher`).
-- **Kafka Consumer Groups**: Configure per-service consumer groups (e.g., `payment-service`, `order-view-service`) and ensure concurrency settings are tuned (default `concurrency=3` is typical).
+### Naming and API Contract
+- Use intention-revealing names and avoid vague abbreviations except common acronyms.
+- Keep method signatures stable unless a bug fix or explicit contract change requires modification.
+- Keep backward compatibility for public APIs and event payloads unless versioning is introduced deliberately.
 
-## <Service Name> Overview (Template for Service-Specific Docs)
+### Multi-Tenancy and Data Safety
+- All business-data repository queries must be tenant-aware.
+- Service logic must validate tenant ownership before mutating state.
+- Never read or update cross-tenant data in request flow or background processing.
+- `UserContextFilter` and trusted gateway context propagation define the service trust boundary for tenant and user identity.
+- Services must not trust raw inbound identity headers from external clients.
+
+### Request Idempotency
+- State-changing REST endpoints such as create, pay, cancel, reserve, confirm, and release must enforce idempotency through a dedicated `Idempotency-Key` contract or a service-specific equivalent request field such as `idempotencyKey`.
+- The typical implementation is:
+  - Insert an idempotency row with `PROCESSING` at command start.
+  - Return cached response when the row is already `COMPLETED`.
+  - Return deterministic in-flight response when the row is still `PROCESSING`.
+  - Update the row to `COMPLETED` or `FAILED` with serialized response data at the end.
+- Idempotency rows should be purged after roughly 24 hours by a scheduled cleanup job.
+- `Idempotency-Key` is the canonical business idempotency header for REST write APIs in new work.
+- `X-Request-Id` is the transport-level request tracing header and should not be treated as the default business idempotency key.
+- Current compatibility exceptions are explicitly scoped: `order-service` create/pay/cancel commands and `product-service` create temporarily accept `X-Request-Id` when `Idempotency-Key` is absent, while `payment-service` already requires `Idempotency-Key` for REST commands and persists it in `payments.idempotency_key`.
+
+### Event-Driven Architecture
+- All Kafka events are wrapped in `BaseEvent<T>` from `event-contract`.
+- The canonical envelope contains `eventId`, `eventType`, `eventVersion`, `tenantId`, `correlationId`, `causationId`, `timestamp`, and `data`.
+- Event schemas are classpath-loaded from `event-contract/src/main/resources/schemas/` and validated during deserialization.
+- Consumers commonly use `@KafkaListener` in `@Component` classes with explicit parsing and may be gated by `@ConditionalOnProperty` when activation must be configurable.
+
+### Consumer Idempotency
+- Kafka consumers must check `processed_events(event_id, consumer_service)` before processing.
+- Use `JdbcIdempotencyService` from `IdempotencyConfig` to call `alreadyProcessed(eventId)` and `markProcessed(eventId)` inside the same transaction as the business mutation.
+- Failure to do this will cause duplicate processing during retries and rebalances.
+- Current exception: `payment-service` documents `processed_events` with `event_id` as the primary key and `consumer_service` as metadata only, so inspect that module's schema before extending its consumers.
+
+### Kafka Publishing and Outbox
+- Never publish domain events directly to Kafka from transactional business code.
+- Use the transactional outbox pattern:
+  1. Persist the business entity change.
+  2. Persist the corresponding `OutboxEvent` with `PENDING` status, topic, key, and serialized envelope.
+  3. Commit both atomically.
+- `KafkaOutboxPublisher` or equivalent scheduled publisher must poll `PENDING` rows, publish them, and move them to `SENT` on broker acknowledgement.
+- At-least-once semantics are expected; if publishing succeeds but state update fails, the next poll may replay the same message with the same key.
+- Outbox message keys should use stable tenant and entity identifiers to preserve ordering.
+
+### Retry and DLQ
+- Services must not retry indefinitely.
+- Failed Kafka messages are routed to `<topic>-dlq` after the configured retry budget is exhausted.
+- DLQ replay must be opt-in, configuration-gated, and delegated to supported replay components such as `DlqReplayService`.
+- Retries must target transient failures only and should use exponential backoff where applicable.
+
+### Saga Orchestration
+- Order-centric orchestration follows a state machine such as `RESERVE_STOCK -> CHARGE_PAYMENT -> CONFIRM_STOCK -> COMPLETED` or compensation flow.
+- Sagas are persisted in dedicated `<service>_sagas` tables with state, retry count, error details, and resumable step metadata.
+- Each saga step must be isolated with `@Transactional(propagation = Propagation.REQUIRES_NEW)` or equivalent crash-safe transaction boundaries.
+- Compensation must safely support refund and stock release when downstream steps fail.
+- Scheduled saga resume tasks must execute idempotently and with distributed locking.
+
+### Concurrency and Locking
+- Optimistic locking using Hibernate `@Version` is mandatory for critical aggregates such as Order, Payment, and Product.
+- Optimistic locking conflicts must map to HTTP 409.
+- Use `SELECT ... FOR UPDATE SKIP LOCKED` or equivalent pessimistic locking only for critical concurrent batch workflows such as saga resume batches.
+- Scheduled mutating jobs must use ShedLock with stable lock names.
+- Reserve, confirm, release, and compensation flows must be idempotent and state-aware before mutation.
+
+### Observability and Tracing
+- Include `tenantId`, `orderId`, and `productId` in MDC whenever available; include `eventId`, `sagaId`, and `paymentId` where relevant.
+- Always clear MDC and thread-local context after request or operation completion.
+- Use structured logging and correlation-friendly messages.
+- Services should auto-configure OpenTelemetry and create custom spans for critical business paths when necessary.
+- `/actuator/health` and `/actuator/prometheus` must be exposed with meaningful probes and metrics.
+- Outbox depth, DLQ depth, retry behavior, and consumer lag should be observable.
+
+### Configuration and Secrets
+- Configuration should be environment-driven and validated at startup.
+- Keep local, test, staging, and production concerns separated through profiles or equivalent layering.
+- Missing mandatory configuration must fail fast.
+- Secrets belong in Vault or Kubernetes Secrets, never in source control.
+
+## Coding Convention
+
+### General Naming
+- Use `camelCase` for methods, variables, fields, parameters, and JSON properties unless protocol standards require otherwise.
+- Use `PascalCase` for classes, interfaces, enums, DTOs, records, mappers, Angular components, and services.
+- Use `UPPER_CASE` for constants and environment variable names.
+
+### File Naming
+- Java public types must live in files with matching names.
+- Angular and TypeScript files should use descriptive hyphen-case such as `order-summary.component.ts` or `payment-client.service.ts`.
+- Avoid generic dump files such as `helper.ts`, `common.ts`, or `Utils.java` unless they are truly cohesive and unavoidable.
+
+### DTO, Entity, Mapper
+- DTOs define transport contracts only.
+- Entities model persistence state and should not be exposed directly as external API responses.
+- Mappers isolate conversion between DTOs, domain models, persistence models, and event payloads.
+- Event payload changes are public contract changes and require compatibility review.
+
+### Clean Architecture
+- Keep controllers thin and delegate business decisions to service or application layers.
+- Domain rules must not depend on HTTP, Kafka, UI, or driver concerns.
+- Infrastructure adapters should stay isolated from core business logic.
+- Prefer package structures that reflect business capability over generic technical dumping grounds.
+
+### Exception Handling
+- Never swallow exceptions silently.
+- Convert low-level failures into meaningful domain or application exceptions where appropriate.
+- Centralize error mapping for HTTP and async processing so responses remain consistent and machine-readable.
+
+### Logging Rule
+- Log at boundaries, state transitions, retries, fallbacks, compensation paths, and failure points.
+- Do not log secrets, tokens, passwords, or sensitive PII.
+- Avoid noisy loop logging where metrics are more appropriate.
+
+### Java Standard
+- Follow the mandatory JavaDoc rule for every non-trivial method and constructor.
+- Prefer explicit transaction boundaries around business mutations.
+- Prefer tenant-aware repository methods and explicit state checks before mutation.
+
+### TypeScript and Angular Standard
+- Prefer strict typing and avoid `any` unless the integration boundary truly requires it.
+- Keep components focused on presentation and orchestration.
+- Extract reusable coordination logic into services, facades, or stores.
+- Avoid circular imports and keep feature folders cohesive.
+
+## Linting and Formatting Standards
+
+### ESLint
+- Root `.eslintrc.js` is the frontend lint baseline for `angular-fe`.
+- Use:
+  - `@typescript-eslint`
+  - `eslint-plugin-import`
+  - `eslint-plugin-sonarjs`
+  - `eslint-config-prettier`
+- Enforce practical rules for import order, promise safety, duplicate imports, and unused variables.
+- ESLint does not lint Java source; Java quality is enforced by repository conventions and build tooling.
+
+### Prettier
+- Root `.prettierrc` is the canonical formatter configuration.
+- Formatting baseline:
+  - `semi: true`
+  - `singleQuote: true`
+  - `printWidth: 120`
+  - `tabWidth: 2`
+  - `trailingComma: all`
+- `.eslintignore` and `.prettierignore` must exclude generated and non-source directories such as `node_modules`, `dist`, `build`, and `coverage`.
+
+### Import Order
+- External framework imports should appear before internal application imports.
+- Use type-only imports in TypeScript when possible.
+- Duplicate imports and circular imports are forbidden.
+
+## Git Convention
+
+### Branch Naming
+- Use:
+  - `feat/<scope>-<short-description>`
+  - `fix/<scope>-<short-description>`
+  - `refactor/<scope>-<short-description>`
+  - `docs/<scope>-<short-description>`
+  - `chore/<scope>-<short-description>`
+
+### Commit Messages
+- Use Conventional Commits.
+- Examples:
+  - `feat(order-service): add saga retry backoff policy`
+  - `fix(payment-service): map optimistic locking to conflict response`
+  - `docs(platform): optimize engineering standards`
+  - `chore(frontend): add eslint and prettier baseline`
+
+### Pull Request Rules
+- One pull request should address one clear objective.
+- The description must include what changed, why it changed, how it was verified, and any rollback concern.
+- Contract, schema, topic, or public API changes must explicitly state compatibility impact.
+- Do not merge while CI is failing or while unresolved architectural risks remain.
+
+## Build, Verification, and Development Flow
+
+### Build Commands
+- Full stack verification: `mvn clean verify`
+- Single module with dependencies: `mvn -q -pl <module-name> -am verify`
+- Backend module tests: `mvn -q -pl <module-name> -am test`
+- Standalone modules outside the root reactor, such as `user-service` and `file-service`, must be verified from their own directories with module-local Maven commands.
+- Frontend tests: run `npm run test` inside `angular-fe`
+- Frontend build: run `npm run build` inside `angular-fe`
+
+### Local Setup
+1. Install Java 25, Maven, Node.js, Docker, and Docker Compose.
+2. Create `.env` from `.env.example`.
+3. Start shared infrastructure with `docker-compose up -d`.
+4. Install frontend dependencies in `angular-fe` when frontend work is required.
+
+### Verification Standard
+- For each meaningful change, run at least module-level compile or tests.
+- Keep test profiles isolated from external dependencies when practical.
+- Add or adjust tests for bug-fix behavior when practical.
+- If a full verification command is too expensive for the current task, run the narrowest command that still meaningfully validates the affected area.
+- The committed frontend scripts in `angular-fe/package.json` are `start`, `build`, `watch`, and `test`; do not assume a working `npm run lint` script exists.
+- The current root `Jenkinsfile` only installs, builds, tests, containerizes, and deploys `angular-fe` (`k8s/06-angular-fe.yaml`), so backend verification remains a separate responsibility.
+
+## Service Checklist (Mandatory Review Checklist)
+- Service exposes liveness and readiness health checks.
+- Service supports graceful shutdown and request draining.
+- Structured logging is enabled and MDC/thread-local cleanup is performed.
+- Prometheus metrics are exposed and meaningful.
+- Repository queries and mutations are tenant-aware.
+- Command endpoints and event consumers are idempotent where duplicate delivery is possible.
+- Event publishing uses transactional outbox.
+- DLQ and replay behavior are documented and configuration-gated.
+- Scheduled mutating jobs use ShedLock.
+- Outbound dependencies have timeout, retry, and circuit breaker coverage where appropriate.
+- Critical aggregates use concurrency control.
+- Documentation is updated when contracts, architecture, or operational behavior changes.
+- `REPORT.md` is updated after each completed agent execution.
+
+## Service Documentation Template
 1. Purpose
    - Describe the goal of the service and the business problem it solves.
 2. Key Functions
-   - List the main functions (e.g., order processing, payment validation).
-3. Event Flows (if applicable)
-   - Describe inbound events consumed (e.g., from other services) and outbound events published.
-   - Reference saga states or choreography patterns used.
+   - List the main business functions.
+3. Event Flows
+   - Describe inbound and outbound events and any saga or choreography relationship.
 4. Tech Stack
-   - Programming languages, frameworks, DB, cache, messaging, specific to this service.
+   - List frameworks, database, cache, messaging, and relevant libraries.
 5. APIs / Endpoints
-   - List important REST endpoints, gRPC services, internal APIs; basic input/output; authentication requirements.
+   - List important REST endpoints, gRPC services, or internal APIs with auth expectations.
 6. Notes / Best Practices
-   - Service-specific multi-tenancy rules, idempotency patterns, logging/observability, concurrency quirks, known limitations.
+   - Record service-specific multi-tenancy, idempotency, observability, concurrency, and limitations.

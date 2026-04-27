@@ -13,7 +13,7 @@
 - `eventType`: event class semantic type
 - `correlationId`: end-to-end correlation key
 - `causationId`: producer-side causation key
-- `idempotencyKey`: request-id bound to command API
+- `idempotencyKey`: effective business idempotency key captured from the originating command API. This may come from `Idempotency-Key` or, for remaining backward-compatible command paths only, legacy `X-Request-Id`.
 
 ## Payload Format
 - Outbox payload is serialized JSON string.

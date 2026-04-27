@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
@@ -26,10 +25,9 @@ public class PaymentClient {
     /**
      * Creates a payment client backed by WebClient.
      *
-     * @param paymentWebClient WebClient configured for payment-service base URL and timeouts.
-     * @param properties Payment client properties containing endpoint paths.
-     * @param resilienceExecutor Resilience executor used to apply CircuitBreaker, Retry, Timeout, and Bulkhead.
-     * @return Initializes a payment client instance.
+     * @param paymentWebClient The WebClient configured for payment-service base URL and timeouts.
+     * @param properties The payment client properties containing endpoint paths.
+     * @param resilienceExecutor The resilience executor used to apply circuit breaker, retry, timeout, and bulkhead policies.
      */
     public PaymentClient(WebClient paymentWebClient, PaymentClientProperties properties, ResilienceExecutor resilienceExecutor) {
         this.paymentWebClient = paymentWebClient;
@@ -47,7 +45,8 @@ public class PaymentClient {
      * @param provider Provider identifier to route payment to a specific provider client.
      * @param idempotencyKey Idempotency key used to prevent double charges across retries.
      * @param correlationId Correlation identifier propagated across services for one business flow.
-     * @return returns the payment response representing the persisted payment result.
+     * @param requestId Request identifier propagated for transport-level tracing.
+     * @return Returns the payment response representing the persisted payment result.
      */
     public PaymentResponse charge(UUID orderId,
                                  Long tenantId,
@@ -55,8 +54,10 @@ public class PaymentClient {
                                  String currency,
                                  String provider,
                                  String idempotencyKey,
-                                 String correlationId) {
+                                 String correlationId,
+                                 String requestId) {
         String traceId = MDC.get("traceId");
+        String effectiveRequestId = requestId != null && !requestId.isBlank() ? requestId : UUID.randomUUID().toString();
         return resilienceExecutor.execute("paymentService", () -> {
             try {
                 PaymentProcessRequest request = new PaymentProcessRequest(
@@ -65,7 +66,6 @@ public class PaymentClient {
                         amount,
                         currency,
                         provider,
-                        idempotencyKey,
                         correlationId,
                         traceId
                 );
@@ -74,7 +74,9 @@ public class PaymentClient {
                         .header("X-Tenant-Id", String.valueOf(tenantId))
                         .header("X-User-Id", String.valueOf(0L))
                         .header("X-Roles", "ROLE_SYSTEM")
-                        .header("X-Request-Id", idempotencyKey)
+                        .header("X-Request-Id", effectiveRequestId)
+                        .header("Idempotency-Key", idempotencyKey)
+                        .header("X-Correlation-Id", correlationId != null && !correlationId.isBlank() ? correlationId : effectiveRequestId)
                         .header("X-Trace-Id", traceId != null ? traceId : UUID.randomUUID().toString())
                         .bodyValue(request)
                         .retrieve()
