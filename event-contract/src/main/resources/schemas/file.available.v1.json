@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file.available.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fileId",
+    "tenantId",
+    "ownerUserId",
+    "category",
+    "bucket",
+    "objectKey",
+    "contentType",
+    "sizeBytes",
+    "checksumSha256",
+    "visibility",
+    "availableAt"
+  ],
+  "properties": {
+    "fileId": { "type": "string", "format": "uuid" },
+    "tenantId": { "type": "string", "format": "uuid" },
+    "ownerUserId": { "type": "string", "format": "uuid" },
+    "category": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "bucket": { "type": "string", "minLength": 3, "maxLength": 120 },
+    "objectKey": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "contentType": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "sizeBytes": { "type": "integer", "minimum": 0 },
+    "checksumSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "visibility": { "type": "string", "enum": ["PRIVATE", "TENANT_SHARED", "PUBLIC"] },
+    "availableAt": { "type": "string", "format": "date-time" }
+  }
+}

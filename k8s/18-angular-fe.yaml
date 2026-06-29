@@ -1,0 +1,85 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: angular-fe
+  namespace: microservice-platform
+  labels:
+    app: angular-fe
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: angular-fe
+  template:
+    metadata:
+      labels:
+        app: angular-fe
+    spec:
+      securityContext:
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: angular-fe
+          image: angular-fe:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: NODE_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: NODE_ENV
+            - name: ANGULAR_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ANGULAR_API_URL
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: angular-fe
+  namespace: microservice-platform
+  labels:
+    app: angular-fe
+spec:
+  selector:
+    app: angular-fe
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  type: ClusterIP
+

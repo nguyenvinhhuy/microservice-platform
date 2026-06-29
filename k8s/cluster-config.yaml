@@ -1,0 +1,7 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: micro-cluster # Name of the cluster
+nodes:
+  - role: control-plane # Master Node
+  - role: worker        # Worker Node 1
+  - role: worker        # Worker Node 2

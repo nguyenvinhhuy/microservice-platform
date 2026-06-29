@@ -1,24 +1,28 @@
-FROM maven:3.9-eclipse-temurin-17 AS builder
+FROM maven:3.9-eclipse-temurin-25 AS builder
+WORKDIR /workspace
+
+COPY . .
+RUN mvn -q -f event-contract/pom.xml install -DskipTests
+RUN mvn -q -f event-infra/pom.xml install -DskipTests
+RUN mvn -q -f file-service/pom.xml clean package -DskipTests
+
+FROM eclipse-temurin:25-jre-alpine
+RUN apk add --no-cache curl \
+    && addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup appuser
+
 WORKDIR /app
-
-COPY pom.xml .
-RUN mvn dependency:go-offline -B
-
-COPY src ./src
-RUN mvn clean package -DskipTests
-
-FROM eclipse-temurin:17-alpine
-RUN apk add --no-cache curl
-RUN addgroup -g 1000 appgroup && adduser -D -u 1000 -G appgroup appuser
-
-WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
+COPY --from=builder /workspace/file-service/target/*.jar /app/app.jar
 RUN chown -R appuser:appgroup /app
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${SERVER_PORT:-8003}/actuator/health || exit 1
+ENV SERVER_PORT=8003
+ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75 -XX:InitialRAMPercentage=25 -XX:+UseZGC -Djava.security.egd=file:/dev/./urandom"
 
 USER appuser
-EXPOSE ${SERVER_PORT:-8003}
-ENTRYPOINT ["java", "-jar", "app.jar"]
+EXPOSE 8003
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:${SERVER_PORT}/actuator/health/liveness || exit 1
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 

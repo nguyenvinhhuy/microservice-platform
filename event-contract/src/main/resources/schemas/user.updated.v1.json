@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "user.updated.v1",
+  "title": "user.updated.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "user.updated.v1" },
+    "dataSchema": { "const": "user.updated.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["userId", "keycloakUserId", "tenantId", "status", "updatedAt"],
+      "properties": {
+        "userId": { "type": "string", "format": "uuid" },
+        "keycloakUserId": { "type": "string", "format": "uuid" },
+        "tenantId": { "type": "string", "format": "uuid" },
+        "email": { "type": ["string", "null"] },
+        "fullName": { "type": ["string", "null"] },
+        "phoneNumber": { "type": ["string", "null"] },
+        "avatarUrl": { "type": ["string", "null"] },
+        "status": { "type": "string", "minLength": 1 },
+        "locale": { "type": ["string", "null"] },
+        "timezone": { "type": ["string", "null"] },
+        "updatedAt": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
+

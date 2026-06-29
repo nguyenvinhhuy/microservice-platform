@@ -28,7 +28,11 @@ public class ProductPrice {
     @Column(nullable = false)
     private BigDecimal price;
 
+    @Column(nullable = false, length = 3)
     private String currency;
+
+    @Column(nullable = false)
     private LocalDateTime validFrom;
+
     private LocalDateTime validTo;
 }

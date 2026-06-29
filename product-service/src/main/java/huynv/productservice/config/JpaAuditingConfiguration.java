@@ -1,30 +1,31 @@
 package huynv.productservice.config;
 
 import huynv.productservice.context.UserContext;
+import java.util.Optional;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
-import java.util.Optional;
-
 @Configuration
 @EnableJpaAuditing(auditorAwareRef = "auditorProvider")
 public class JpaAuditingConfiguration {
 
-    @Bean
+    private static final String SYSTEM_AUDITOR = "system";
+
     /**
-     * auditorProvider operation.
+     * Creates the auditor provider used by Spring Data JPA auditing.
      *
-     * @return auditorProvider result
+     * @return Returns the current user identifier when request context exists, or the system auditor value otherwise.
      */
+    @Bean
     public AuditorAware<String> auditorProvider() {
         return () -> {
             UserContext userContext = UserContext.getCurrentUserContext();
             if (userContext != null && userContext.getUserId() != null) {
                 return Optional.of(userContext.getUserId().toString());
             }
-            return Optional.of("system"); // Fallback if no user context
+            return Optional.of(SYSTEM_AUDITOR);
         };
     }
 }

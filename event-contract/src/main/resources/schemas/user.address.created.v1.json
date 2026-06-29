@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "user.address.created.v1",
+  "title": "user.address.created.v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["eventId", "eventType", "source", "eventTime", "aggregateId", "aggregateVersion", "dataSchema", "data"],
+  "properties": {
+    "eventType": { "const": "user.address.created.v1" },
+    "dataSchema": { "const": "user.address.created.v1" },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["userId", "tenantId", "addressId", "country", "city", "addressLine", "isDefault", "createdAt"],
+      "properties": {
+        "userId": { "type": "string", "format": "uuid" },
+        "tenantId": { "type": "string", "format": "uuid" },
+        "addressId": { "type": "string", "format": "uuid" },
+        "label": { "type": ["string", "null"] },
+        "country": { "type": "string", "minLength": 1 },
+        "city": { "type": "string", "minLength": 1 },
+        "district": { "type": ["string", "null"] },
+        "addressLine": { "type": "string", "minLength": 1 },
+        "postalCode": { "type": ["string", "null"] },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
+

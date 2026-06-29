@@ -1,383 +1,252 @@
 # Kubernetes Deployment Guide
 
-## 📋 Deployment Order
+Tài liệu này là **playbook triển khai local trên `kind`** cho bộ manifest hiện tại trong thư mục `k8s/`. Mục tiêu của file này là giúp bạn biết **chạy gì trước, chạy gì sau, service nào đang dùng được, và service nào chưa nằm trong flow mặc định**.
 
-Deploy trong thứ tự sau:
+## 1. Phạm vi áp dụng
 
-### 1. Foundation (Namespace & Config)
-```bash
-kubectl apply -f 00-namespace.yaml
-kubectl apply -f 01-configmap-secret.yaml
+- Áp dụng cho **local-kind flow** trong repo này.
+- `k8s/00-05` là lớp hạ tầng nền.
+- `k8s/logging/` là stack riêng trong namespace `logging`.
+- Flow mặc định trong `k8s/` ưu tiên chuỗi backend chính trước, rồi mới tới read-model, utility, gateway, và frontend.
+- `07-user-service.yaml` và `11-file-service.yaml` được giữ lại để traceability, nhưng **không nằm trong flow local-kind mặc định**.
+
+## 2. Workload nào đang nằm trong flow mặc định
+
+### Đã đưa vào flow local-kind
+
+- `product-service`
+- `inventory-service`
+- `payment-service`
+- `order-service`
+- `notification-service`
+- `audit-log-service`
+- `product-view-service`
+- `order-view-service`
+- `dlq-replayer-service`
+- `gateway-service`
+- `angular-fe`
+
+### Không nằm trong flow mặc định
+
+- `user-service`: module legacy, chưa coi là path local-kind đã verify end-to-end.
+- `file-service`: module legacy, còn phụ thuộc `MinIO`, chưa coi là path local-kind đã verify end-to-end.
+
+## 3. Thứ tự file trong `k8s/`
+
+### Infrastructure
+
+```text
+00-namespace.yaml
+01-configmap-secret.yaml
+02-postgres.yaml
+03-redis.yaml
+05-kafka.yaml
 ```
 
-### 2. Databases
-```bash
-kubectl apply -f 02-postgres.yaml
-kubectl apply -f 03-redis.yaml
+### Default local-kind flow
+
+```text
+06-product-service.yaml
+08-inventory-service.yaml
+09-payment-service.yaml
+10-order-service.yaml
+12-notification-service.yaml
+13-audit-log-service.yaml
+14-product-view-service.yaml
+15-order-view-service.yaml
+16-dlq-replayer-service.yaml
+17-gateway-service.yaml
+18-angular-fe.yaml
 ```
 
-### 3. Messaging
-```bash
-kubectl apply -f 05-kafka.yaml
+### Legacy / optional manifests
+
+```text
+07-user-service.yaml
+11-file-service.yaml
 ```
 
-### 4. Application Services
-```bash
-# Core services
-kubectl apply -f 07-gateway-service.yaml
-kubectl apply -f 08-user-service.yaml
-kubectl apply -f 09-order-service.yaml
-kubectl apply -f 10-file-service.yaml
-kubectl apply -f 11-notification-service.yaml
-kubectl apply -f 12-audit-log-service.yaml
+## 4. Dependency ngoài cụm cần biết
 
-# Frontend
-kubectl apply -f 06-angular-fe.yaml
+| Thành phần | Service liên quan | Ghi chú |
+| --- | --- | --- |
+| Keycloak / JWT issuer | `gateway-service`, `notification-service` | Cần issuer phù hợp nếu muốn chạy ổn định đầy đủ. |
+| MinIO | `file-service` | Chưa nằm trong flow mặc định. |
+| Logging stack | Toàn nền tảng | Nằm riêng trong `k8s/logging/`. |
+
+## 5. Trình tự triển khai local-kind
+
+### Bước 0 - Chuẩn bị cluster
+
+```powershell
+docker start micro-cluster-control-plane micro-cluster-worker micro-cluster-worker2
+kubectl get nodes
+kubectl config set-context --current --namespace=microservice-platform
 ```
 
-### Deploy All at Once
-```bash
-kubectl apply -f .
+Nếu Elasticsearch trong logging báo lỗi `vm.max_map_count`:
+
+```powershell
+wsl -d docker-desktop -u root sysctl -w vm.max_map_count=262144
 ```
 
----
+### Bước 1 - Apply hạ tầng nền
 
-## ✅ Verify Deployment
+```powershell
+kubectl apply -f .\k8s\00-namespace.yaml
+kubectl apply -f .\k8s\01-configmap-secret.yaml
+kubectl apply -f .\k8s\02-postgres.yaml
+kubectl apply -f .\k8s\03-redis.yaml
+kubectl apply -f .\k8s\05-kafka.yaml
+```
 
-### Check Namespace
-```bash
+Chỉ rollout service phụ thuộc event sau khi Kafka/Zookeeper đã ổn định.
+
+### Bước 2 - Logging stack (tùy chọn)
+
+```powershell
+kubectl apply -f .\k8s\logging\00-logging-namespace.yaml
+kubectl apply -f .\k8s\logging\01-elasticsearch-config.yaml
+kubectl apply -f .\k8s\logging\02-elasticsearch.yaml
+kubectl apply -f .\k8s\logging\03-kibana.yaml
+kubectl apply -f .\k8s\logging\04-fluentd-rbac.yaml
+kubectl apply -f .\k8s\logging\05-fluentd-config.yaml
+kubectl apply -f .\k8s\logging\06-fluentd-daemonset.yaml
+```
+
+### Bước 3 - Build và nạp local images
+
+#### Nhóm build từ root context
+
+```powershell
+$rootContextServices = @(
+  'product-service',
+  'inventory-service',
+  'payment-service',
+  'order-service',
+  'product-view-service',
+  'order-view-service',
+  'dlq-replayer-service'
+)
+
+foreach ($service in $rootContextServices) {
+  docker build --no-cache -t "${service}:latest" -f "$service/Dockerfile" .
+  kind load docker-image "${service}:latest" --name micro-cluster
+}
+```
+
+#### Nhóm build theo module context
+
+```powershell
+docker build --no-cache -t audit-log-service:latest -f audit-log-service/Dockerfile audit-log-service
+kind load docker-image audit-log-service:latest --name micro-cluster
+
+docker build --no-cache -t notification-service:latest -f notification-service/Dockerfile notification-service
+kind load docker-image notification-service:latest --name micro-cluster
+
+docker build --no-cache -t gateway-service:latest -f gateway-service/Dockerfile gateway-service
+kind load docker-image gateway-service:latest --name micro-cluster
+
+docker build --no-cache -t angular-fe:latest -f angular-fe/Dockerfile angular-fe
+kind load docker-image angular-fe:latest --name micro-cluster
+```
+
+> `user-service` và `file-service` không nằm trong nhóm build mặc định của local-kind flow hiện tại.
+
+### Bước 4 - Apply manifests theo thứ tự
+
+```powershell
+kubectl apply -f .\k8s\06-product-service.yaml
+kubectl rollout status deployment product-service -n microservice-platform
+
+kubectl apply -f .\k8s\08-inventory-service.yaml
+kubectl rollout status deployment inventory-service -n microservice-platform
+
+kubectl apply -f .\k8s\09-payment-service.yaml
+kubectl rollout status deployment payment-service -n microservice-platform
+
+kubectl apply -f .\k8s\10-order-service.yaml
+kubectl rollout status deployment order-service -n microservice-platform
+
+kubectl apply -f .\k8s\12-notification-service.yaml
+kubectl rollout status deployment notification-service -n microservice-platform
+
+kubectl apply -f .\k8s\13-audit-log-service.yaml
+kubectl rollout status deployment audit-log-service -n microservice-platform
+
+kubectl apply -f .\k8s\14-product-view-service.yaml
+kubectl rollout status deployment product-view-service -n microservice-platform
+
+kubectl apply -f .\k8s\15-order-view-service.yaml
+kubectl rollout status deployment order-view-service -n microservice-platform
+
+kubectl apply -f .\k8s\16-dlq-replayer-service.yaml
+kubectl rollout status deployment dlq-replayer-service -n microservice-platform
+
+kubectl apply -f .\k8s\17-gateway-service.yaml
+kubectl rollout status deployment gateway-service -n microservice-platform
+
+kubectl apply -f .\k8s\18-angular-fe.yaml
+kubectl rollout status deployment angular-fe -n microservice-platform
+```
+
+### Bước 5 - Legacy manifests nếu thực sự cần
+
+```powershell
+kubectl apply -f .\k8s\07-user-service.yaml
+kubectl apply -f .\k8s\11-file-service.yaml
+```
+
+Chỉ dùng bước này nếu bạn đang tự hoàn thiện runtime của `user-service` hoặc `file-service`.
+
+## 6. Verify nhanh
+
+```powershell
 kubectl get namespace
-kubectl get namespace microservice-platform
-```
-
-### Check Services
-```bash
-kubectl get services -n microservice-platform
-```
-
-### Check Pods
-```bash
 kubectl get pods -n microservice-platform
-kubectl get pods -n microservice-platform -w  # Watch
-```
-
-### Check Deployments
-```bash
+kubectl get svc -n microservice-platform
 kubectl get deployments -n microservice-platform
+kubectl get pods -n logging
 ```
 
-### Check StatefulSets
-```bash
-kubectl get statefulsets -n microservice-platform
+```powershell
+kubectl rollout status deployment product-service -n microservice-platform
+kubectl rollout status deployment inventory-service -n microservice-platform
+kubectl rollout status deployment payment-service -n microservice-platform
+kubectl rollout status deployment order-service -n microservice-platform
+kubectl rollout status deployment gateway-service -n microservice-platform
+kubectl rollout status deployment angular-fe -n microservice-platform
 ```
 
-### Check HPA
-```bash
-kubectl get hpa -n microservice-platform
+```powershell
+kubectl logs -n microservice-platform deployment/product-service --tail=100
+kubectl logs -n microservice-platform deployment/inventory-service --tail=100
+kubectl logs -n microservice-platform deployment/payment-service --tail=100
+kubectl logs -n microservice-platform deployment/order-service --tail=100
+kubectl get events -n microservice-platform --sort-by='.lastTimestamp'
 ```
 
----
+## 7. Ghi chú vận hành
 
-## 🔍 Detailed Checks
+- `kubectl apply -f .` không phải flow triển khai chính của repo này.
+- Với service build local, luôn làm đủ chuỗi: **build -> kind load -> apply -> rollout status**.
+- Nếu vừa sửa entity, schema, hoặc dependency boot quan trọng, ưu tiên `--no-cache` để tránh pod chạy lại image cũ trong node cache của kind.
 
-### Check Pod Status
-```bash
-kubectl describe pod [pod-name] -n microservice-platform
-```
+## 8. Cleanup
 
-### Check Service
-```bash
-kubectl describe service gateway-service -n microservice-platform
-```
-
-### Check Logs
-```bash
-# All pods
-kubectl logs -f -n microservice-platform --all-containers=true
-
-# Specific pod
-kubectl logs -f [pod-name] -n microservice-platform
-
-# Specific container in pod
-kubectl logs -f [pod-name] -c [container-name] -n microservice-platform
-```
-
-### Logging Docs
-
-- [EFK Logging Design](D:/IntelliJProjects/microservice-platform/docs/efk-logging-design.md:1)
-- [Kibana Query Cheatsheet](D:/IntelliJProjects/microservice-platform/docs/kibana-query-cheatsheet.md:1)
-- [Logging Runbook](D:/IntelliJProjects/microservice-platform/docs/logging-runbook.md:1)
-
-### Check Events
-```bash
-kubectl get events -n microservice-platform
-kubectl describe events -n microservice-platform
-```
-
----
-
-## 🚀 Port Forwarding (Local Testing)
-
-### Access Services Locally
-```bash
-# Gateway Service
-kubectl port-forward svc/gateway-service 8000:8000 -n microservice-platform
-
-# User Service
-kubectl port-forward svc/user-service 8001:8001 -n microservice-platform
-
-# Angular Frontend
-kubectl port-forward svc/angular-fe 8080:80 -n microservice-platform
-
-# Redis
-kubectl port-forward svc/redis-cache 6379:6379 -n microservice-platform
-```
-
-## 🔧 Scaling
-
-### Manual Scale
-```bash
-# Scale gateway-service to 5 replicas
-kubectl scale deployment gateway-service --replicas=5 -n microservice-platform
-
-# Check current scale
-kubectl get deployment gateway-service -n microservice-platform
-```
-
-### HPA Status
-```bash
-kubectl get hpa -n microservice-platform
-kubectl describe hpa gateway-service-hpa -n microservice-platform
-```
-
----
-
-## 🔐 Secrets & ConfigMap
-
-### View ConfigMap
-```bash
-kubectl get configmap -n microservice-platform
-kubectl describe configmap app-config -n microservice-platform
-```
-
-### View Secrets (without values)
-```bash
-kubectl get secrets -n microservice-platform
-```
-
-### Create/Update Secrets
-```bash
-# Update database password
-kubectl create secret generic app-secrets \
-  --from-literal=GATEWAY_DB_PASSWORD=newpassword \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
----
-
-## 📊 Resource Usage
-
-### Check Node Resources
-```bash
-kubectl top node
-```
-
-### Check Pod Resources
-```bash
-kubectl top pods -n microservice-platform
-```
-
----
-
-## 🔄 Rolling Updates
-
-### Update Service Image
-```bash
-kubectl set image deployment/gateway-service \
-  gateway-service=your-registry/gateway-service:v2.0 \
-  -n microservice-platform
-```
-
-### Check Rollout Status
-```bash
-kubectl rollout status deployment/gateway-service -n microservice-platform
-```
-
-### Rollback
-```bash
-kubectl rollout undo deployment/gateway-service -n microservice-platform
-```
-
----
-
-## 🧹 Cleanup
-
-### Delete Service
-```bash
-kubectl delete deployment gateway-service -n microservice-platform
-```
-
-### Delete All in Namespace
-```bash
-kubectl delete all -n microservice-platform
-```
-
-### Delete Namespace (removes all)
-```bash
+```powershell
 kubectl delete namespace microservice-platform
 ```
 
----
+Nếu muốn xóa luôn cụm `kind`:
 
-## 🐛 Troubleshooting
-
-### Pod Not Running
-```bash
-# Check pod status
-kubectl describe pod [pod-name] -n microservice-platform
-
-# Check events
-kubectl get events -n microservice-platform --sort-by='.lastTimestamp'
-
-# Check logs
-kubectl logs [pod-name] -n microservice-platform
+```powershell
+kind delete cluster --name micro-cluster
 ```
 
-### Service Not Accessible
-```bash
-# Check service
-kubectl get service gateway-service -n microservice-platform
+## 9. File liên quan
 
-# Check endpoints
-kubectl get endpoints gateway-service -n microservice-platform
-
-# Test connectivity
-kubectl run -it --rm debug --image=busybox --restart=Never -- \
-  wget -q -O- http://gateway-service:8000/actuator/health -n microservice-platform
-```
-
-### Database Connection Issues
-```bash
-# Check postgres pod
-kubectl get pods -l app=postgres-db -n microservice-platform
-
-# Check logs
-kubectl logs postgres-db-0 -n microservice-platform
-
-# Connect to pod
-kubectl exec -it postgres-db-0 -n microservice-platform -- psql -U gateway -d gateway_db
-```
-
----
-
-## 📋 Pre-Deployment Checklist
-
-Before deploying to production:
-
-- [ ] Docker images built and pushed to registry
-- [ ] Update image URLs in manifests (your-registry)
-- [ ] Configure proper resource requests/limits
-- [ ] Setup persistent volumes for databases
-- [ ] Configure ingress for external access
-- [ ] Setup TLS certificates
-- [ ] Configure secrets properly
-- [ ] Test HPA thresholds
-- [ ] Setup monitoring/logging
-- [ ] Configure backup strategy
-
----
-
-## 🚀 Full Deployment Script
-
-```bash
-#!/bin/bash
-
-# Color output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-echo -e "${YELLOW}Deploying Microservice Platform to Kubernetes${NC}"
-
-# Step 1: Create namespace
-echo -e "${YELLOW}Step 1: Creating namespace...${NC}"
-kubectl apply -f 00-namespace.yaml
-sleep 5
-
-# Step 2: Create config & secrets
-echo -e "${YELLOW}Step 2: Creating ConfigMap and Secrets...${NC}"
-kubectl apply -f 01-configmap-secret.yaml
-sleep 5
-
-# Step 3: Deploy databases
-echo -e "${YELLOW}Step 3: Deploying databases...${NC}"
-kubectl apply -f 02-postgres.yaml
-kubectl apply -f 03-redis.yaml
-sleep 10
-
-# Step 4: Deploy messaging
-echo -e "${YELLOW}Step 4: Deploying messaging (Kafka)...${NC}"
-kubectl apply -f 05-kafka.yaml
-sleep 15
-
-# Step 5: Deploy services
-echo -e "${YELLOW}Step 5: Deploying microservices...${NC}"
-kubectl apply -f 07-gateway-service.yaml
-kubectl apply -f 08-user-service.yaml
-kubectl apply -f 09-order-service.yaml
-kubectl apply -f 10-file-service.yaml
-kubectl apply -f 11-notification-service.yaml
-kubectl apply -f 12-audit-log-service.yaml
-sleep 10
-
-# Step 6: Deploy frontend
-echo -e "${YELLOW}Step 6: Deploying frontend...${NC}"
-kubectl apply -f 06-angular-fe.yaml
-sleep 10
-
-# Verify
-echo -e "${YELLOW}Verifying deployment...${NC}"
-kubectl get all -n microservice-platform
-
-echo -e "${GREEN}Deployment complete!${NC}"
-echo -e "${YELLOW}Check status with: kubectl get all -n microservice-platform${NC}"
-```
-
-Save as `deploy.sh` and run: `bash deploy.sh`
-
----
-
-## 📞 Useful Commands Reference
-
-```bash
-# Quick checks
-kubectl get all -n microservice-platform
-kubectl describe pod [pod-name] -n microservice-platform
-kubectl logs -f [pod-name] -n microservice-platform
-
-# Scale
-kubectl scale deployment gateway-service --replicas=5 -n microservice-platform
-
-# Port forward
-kubectl port-forward svc/gateway-service 8000:8000 -n microservice-platform
-
-# Execute command
-kubectl exec -it [pod-name] -n microservice-platform -- /bin/bash
-
-# View resources
-kubectl top nodes
-kubectl top pods -n microservice-platform
-
-# Delete
-kubectl delete -f 07-gateway-service.yaml -n microservice-platform
-```
-
----
-
-**Status**: ✅ Ready for Kubernetes Deployment
-
-**Version**: 1.0.0
-
-**Date**: 2026-02-11
-
+- `k8s/logging/README.md`: hướng dẫn riêng cho logging stack.
+- `k8s/06-product-service.yaml`: backend rollout đầu tiên trong flow mặc định.
+- `k8s/17-gateway-service.yaml`: gateway deploy sau khi backend core đã sẵn sàng.
+- `k8s/18-angular-fe.yaml`: frontend deploy cuối cùng trong flow local-kind.

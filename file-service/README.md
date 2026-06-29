@@ -1,47 +1,71 @@
 # File Service
 
-File Management Service with MinIO Integration
+Production-grade tenant-aware file lifecycle service for direct uploads, pre-signed uploads, downloads, metadata, quota enforcement, and outbox-backed event publishing.
 
-## Features
-- File upload and download
-- File metadata management
-- S3-compatible storage (MinIO)
-- Kafka event publishing
-- File versioning
-- Access control
+## Key Capabilities
+- Direct multipart uploads through `file-service`.
+- Pre-signed upload reservation and confirmation flow.
+- Native multipart upload initiation, part presigning, completion, abort, and stale-session cleanup.
+- Pre-signed download URL generation and streaming downloads.
+- Short-lived download ticket issuance and ticket-backed streaming downloads.
+- Tenant-aware metadata persistence in PostgreSQL.
+- MinIO-backed object storage using an S3-compatible client.
+- PostgreSQL-backed REST idempotency for confirm/delete commands.
+- Redis-backed caching for metadata, quota lookups, and pre-signed upload state.
+- Transactional Kafka outbox integration for file lifecycle events.
+- JWT-based tenant isolation and internal-service authorization.
+- Actuator liveness/readiness plus custom MinIO health contributor.
 
-## Building
+## Verification
 ```bash
-mvn clean package
+mvn -q test
+mvn -q verify
 ```
 
-## Running Locally
+## Local Run
 ```bash
-mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=8003"
+mvn spring-boot:run
 ```
 
 ## Docker Build
+Build from the repository root so shared modules are available in the Docker context.
+
 ```bash
-docker build -t file-service:latest .
+docker build -f file-service/Dockerfile -t file-service:latest .
 ```
 
-## Configuration
-- `SERVER_PORT`: 8003
-- `SPRING_DATASOURCE_URL`: jdbc:postgresql://localhost:5437/file_db
-- `MINIO_URL`: http://localhost:9000
-- `MINIO_ACCESS_KEY`: minioadmin
-- `MINIO_SECRET_KEY`: minioadmin
+## Main Endpoints
+- `POST /files/upload`
+- `POST /files/presigned-upload`
+- `POST /files/multipart/initiate`
+- `POST /files/{fileId}/multipart/parts/{partNumber}/presign`
+- `POST /files/{fileId}/confirm`
+- `POST /files/{fileId}/multipart/complete`
+- `GET /files/{fileId}`
+- `GET /files`
+- `GET /files/{fileId}/presigned-download`
+- `POST /files/{fileId}/download-ticket`
+- `GET /files/{fileId}/download`
+- `GET /files/download-tickets/{token}/download`
+- `DELETE /files/{fileId}/multipart`
+- `DELETE /files/{fileId}`
+- `GET /internal/files/{fileId}`
 
-## API Endpoints
-- `POST /api/files/upload` - Upload file
-- `GET /api/files/{id}` - Download file
-- `GET /api/files` - List files
-- `DELETE /api/files/{id}` - Delete file
-- `GET /api/files/{id}/metadata` - Get file metadata
+## Final Hardening Report
+- `D:\IntelliJProjects\microservice-platform\FILE_SERVICE_FINAL_HARDENING_REPORT.md`
 
-## Storage
-Uses MinIO S3-compatible storage (http://localhost:9001)
+## Important Configuration
+- `SPRING_DATASOURCE_URL`
+- `SPRING_DATASOURCE_USERNAME`
+- `SPRING_DATASOURCE_PASSWORD`
+- `MINIO_URL`
+- `MINIO_ACCESS_KEY`
+- `MINIO_SECRET_KEY`
+- `KAFKA_BOOTSTRAP_SERVERS`
+- `KEYCLOAK_ISSUER_URI`
 
-## Health Check
-- `http://localhost:8003/actuator/health`
+## Health
+- `GET /actuator/health/liveness`
+- `GET /actuator/health/readiness`
+- `GET /actuator/prometheus`
 

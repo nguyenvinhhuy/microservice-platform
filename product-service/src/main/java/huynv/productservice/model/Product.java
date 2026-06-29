@@ -36,15 +36,23 @@ public class Product {
     @Column(nullable = false)
     private String name;
 
+    @Column(nullable = false, unique = true)
     private String slug;
     private String shortDescription;
     private String description;
     private String brand;
+
+    @Column(nullable = false)
     private Long categoryId;
+
+    @Column(nullable = false)
     private BigDecimal price;
+
+    @Column(nullable = false, length = 3)
     private String currency;
 
     @Enumerated(EnumType.STRING) // Store enum as String in DB
+    @Column(nullable = false)
     private ProductStatus status;
 
     private String thumbnailUrl;
@@ -64,7 +72,7 @@ public class Product {
     private List<ProductPrice> priceHistory;
 
     @CreatedDate
-    @Column(updatable = false)
+    @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     private String createdBy;

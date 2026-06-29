@@ -29,6 +29,7 @@
                     <fieldName>exception</fieldName>
                 </stackTrace>
                 <mdc>
+                    <includeMdcKeyName>requestId</includeMdcKeyName>
                     <includeMdcKeyName>traceId</includeMdcKeyName>
                     <includeMdcKeyName>spanId</includeMdcKeyName>
                     <includeMdcKeyName>parentSpanId</includeMdcKeyName>
@@ -36,6 +37,7 @@
                     <includeMdcKeyName>causationId</includeMdcKeyName>
                     <includeMdcKeyName>tenantId</includeMdcKeyName>
                     <includeMdcKeyName>userId</includeMdcKeyName>
+                    <includeMdcKeyName>fileId</includeMdcKeyName>
                     <includeMdcKeyName>orderId</includeMdcKeyName>
                     <includeMdcKeyName>productId</includeMdcKeyName>
                     <includeMdcKeyName>paymentId</includeMdcKeyName>

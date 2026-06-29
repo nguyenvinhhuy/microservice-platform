@@ -16,16 +16,6 @@
   - Which commands were run.
   - Pass/fail result.
 
-## Report Rule (Mandatory)
-- After every completed agent execution, write a summary to `REPORT.md` as follows:
-  1. Preserve the original header content of the file.
-  2. Insert the execution summary immediately below the header, describing clearly the changes made.
-  3. At the bottom of the file, append a version note with:
-     - Version marker (`v2`, `v3`, ...) in increasing order.
-     - Timestamp of the update.
-     - Short description of the changes.
-- Historical entries and version notes must remain intact for traceability.
-
 ## JavaDoc Rule (Mandatory)
 - Every non-trivial method and constructor must use a JavaDoc block directly above the declaration.
 - If annotations are present, the JavaDoc block must be above the first annotation.
@@ -223,13 +213,20 @@
 
 ### Prettier
 - Root `.prettierrc` is the canonical formatter configuration.
+- Prettier is the formatter for frontend, web, JSON, YAML, Markdown, and Java assets in this repository.
 - Formatting baseline:
   - `semi: true`
   - `singleQuote: true`
   - `printWidth: 120`
-  - `tabWidth: 2`
+  - `tabWidth: 2` by default, with `tabWidth: 4` for `*.java` via override.
   - `trailingComma: all`
 - `.eslintignore` and `.prettierignore` must exclude generated and non-source directories such as `node_modules`, `dist`, `build`, and `coverage`.
+
+### Java Formatting
+- Root `.editorconfig` defines the shared editor whitespace baseline for Java and non-Java files.
+- **Build-time canonical formatter for reactor modules**: Spotless with Google Java Format (`mvn spotless:apply` or `mvn verify`). This is authoritative — CI enforces it.
+- **IDE / editor integration**: Root `.prettierrc` includes `prettier-plugin-java` with 4-space override for on-save formatting in IntelliJ. Point Prettier to `node_modules/prettier` and the root `.prettierrc`. These two formatters may produce subtly different output; treat Spotless/Google Java Format as the final arbiter for reactor modules.
+- Standalone modules (`user-service`, `file-service`) are outside the root Maven reactor and are not covered by root Spotless; use module-local Maven commands or Prettier for those.
 
 ### Import Order
 - External framework imports should appear before internal application imports.
@@ -282,7 +279,7 @@
 - Add or adjust tests for bug-fix behavior when practical.
 - If a full verification command is too expensive for the current task, run the narrowest command that still meaningfully validates the affected area.
 - The committed frontend scripts in `angular-fe/package.json` are `start`, `build`, `watch`, and `test`; do not assume a working `npm run lint` script exists.
-- The current root `Jenkinsfile` only installs, builds, tests, containerizes, and deploys `angular-fe` (`k8s/06-angular-fe.yaml`), so backend verification remains a separate responsibility.
+- The current root `Jenkinsfile` only installs, builds, tests, containerizes, and deploys `angular-fe` (`k8s/18-angular-fe.yaml`), so backend verification remains a separate responsibility.
 
 ## Service Checklist (Mandatory Review Checklist)
 - Service exposes liveness and readiness health checks.
@@ -297,7 +294,6 @@
 - Outbound dependencies have timeout, retry, and circuit breaker coverage where appropriate.
 - Critical aggregates use concurrency control.
 - Documentation is updated when contracts, architecture, or operational behavior changes.
-- `REPORT.md` is updated after each completed agent execution.
 
 ## Service Documentation Template
 1. Purpose

@@ -117,7 +117,7 @@ pipeline {
                     kubectl set image deployment/angular-fe \
                         angular-fe=${IMAGE_NAME}:${IMAGE_TAG} \
                         -n microservice-platform || \
-                    kubectl apply -f k8s/06-angular-fe.yaml
+                    kubectl apply -f k8s/18-angular-fe.yaml
 
                     kubectl rollout status deployment/angular-fe -n microservice-platform --timeout=5m
                 '''

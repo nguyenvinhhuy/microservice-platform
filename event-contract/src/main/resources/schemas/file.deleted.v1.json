@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file.deleted.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fileId", "tenantId", "ownerUserId", "bucket", "objectKey", "deletedAt"],
+  "properties": {
+    "fileId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "ownerUserId": {"type": "string", "format": "uuid"},
+    "bucket": {"type": "string", "minLength": 3, "maxLength": 120},
+    "objectKey": {"type": "string", "minLength": 1, "maxLength": 512},
+    "deletedAt": {"type": "string", "format": "date-time"}
+  }
+}
+

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file.scan.completed.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fileId", "tenantId", "malwareStatus", "reason", "scanDurationMs", "scannerName", "timedOut", "checksumBlacklisted", "scannedAt"],
+  "properties": {
+    "fileId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "malwareStatus": {"type": "string", "enum": ["PENDING", "CLEAN", "INFECTED", "FAILED"]},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+    "scanDurationMs": {"type": "integer", "minimum": 0},
+    "scannerName": {"type": "string", "minLength": 1, "maxLength": 80},
+    "timedOut": {"type": "boolean"},
+    "checksumBlacklisted": {"type": "boolean"},
+    "scannedAt": {"type": "string", "format": "date-time"}
+  }
+}
+

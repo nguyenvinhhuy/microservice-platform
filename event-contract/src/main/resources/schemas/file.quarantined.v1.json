@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "file.quarantined.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fileId", "tenantId", "ownerUserId", "malwareStatus", "reason", "quarantinedAt"],
+  "properties": {
+    "fileId": {"type": "string", "format": "uuid"},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "ownerUserId": {"type": "string", "format": "uuid"},
+    "malwareStatus": {"type": "string", "enum": ["PENDING", "CLEAN", "INFECTED", "FAILED"]},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 500},
+    "quarantinedAt": {"type": "string", "format": "date-time"}
+  }
+}
+

@@ -13,9 +13,7 @@ WORKDIR /app
 COPY --from=builder /workspace/product-service/target/*.jar app.jar
 RUN chown -R appuser:appgroup /app
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD sh -c "curl -f http://localhost:${SERVER_PORT:-8006}/actuator/health || exit 1"
-
 USER appuser
 EXPOSE 8006
+ENV SERVER_PORT=8006
 ENTRYPOINT ["java", "-jar", "app.jar"]

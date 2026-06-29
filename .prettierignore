@@ -3,3 +3,12 @@ dist
 build
 coverage
 *.log
+.angular
+.idea
+out
+target
+**/dist
+**/build
+**/coverage
+**/target
+**/*.html

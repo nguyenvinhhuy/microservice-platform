@@ -123,6 +123,22 @@ Redis    Kafka         PostgreSQL    MinIO         (Optional)
 - Prometheus (monitoring)
 - Grafana (visualization)
 
+## 🧹 Formatting Conventions
+
+- Root `.prettierrc` is the canonical formatter config for frontend, JSON, YAML, Markdown, and Java assets.
+- Root `.editorconfig` is the shared editor whitespace baseline across the repository.
+- Java files use a dedicated Prettier override with `tabWidth: 4` while web and text assets keep `tabWidth: 2`.
+- If you use IntelliJ IDEA with Prettier on save, point it at the root `node_modules/prettier` package and the root `.prettierrc` file.
+
+Useful commands:
+
+```powershell
+Push-Location "D:\IntelliJProjects\microservice-platform"
+npx prettier --write "product-service/src/main/java/huynv/productservice/config/JpaAuditingConfiguration.java"
+npx prettier --check "product-service/src/main/java/huynv/productservice/config/JpaAuditingConfiguration.java"
+Pop-Location
+```
+
 ## 🚀 Quick Start
 
 ### Prerequisites

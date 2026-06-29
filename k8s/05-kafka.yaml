@@ -133,4 +133,3 @@ spec:
     targetPort: 29092
     name: internal
   type: ClusterIP
-

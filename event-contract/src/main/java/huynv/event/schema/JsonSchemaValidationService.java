@@ -2,11 +2,13 @@ package huynv.event.schema;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 
+import java.net.URI;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,10 +63,49 @@ public final class JsonSchemaValidationService {
 
     private JsonSchema compile(String schemaId, String jsonSchema) {
         try {
-            return jsonSchemaFactory.getSchema(objectMapper.readTree(jsonSchema));
+            return jsonSchemaFactory.getSchema(normalizeSchemaDocument(schemaId, objectMapper.readTree(jsonSchema)));
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to compile JSON Schema schemaId=" + schemaId + ".", ex);
         }
+    }
+
+    /**
+     * Normalizes repository-local schema identifiers into absolute URNs accepted by the JSON Schema validator.
+     *
+     * @param schemaId Logical repository schema identifier.
+     * @param schemaNode Parsed JSON Schema document.
+     * @return Returns the normalized schema document that can be compiled by the validator.
+     */
+    private JsonNode normalizeSchemaDocument(String schemaId, JsonNode schemaNode) {
+        if (!(schemaNode instanceof ObjectNode objectNode)) {
+            return schemaNode;
+        }
+        JsonNode idNode = objectNode.get("$id");
+        if (idNode == null || !idNode.isTextual()) {
+            objectNode.put("$id", toAbsoluteSchemaId(schemaId));
+            return objectNode;
+        }
+        String rawId = idNode.asText();
+        try {
+            URI uri = URI.create(rawId);
+            if (uri.isAbsolute()) {
+                return objectNode;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Fall through to repository-local normalization.
+        }
+        objectNode.put("$id", toAbsoluteSchemaId(rawId.isBlank() ? schemaId : rawId));
+        return objectNode;
+    }
+
+    /**
+     * Converts a repository-local schema identifier into a stable absolute URN.
+     *
+     * @param schemaId Logical schema identifier used by the repository.
+     * @return Returns an absolute URN representation of the schema identifier.
+     */
+    private String toAbsoluteSchemaId(String schemaId) {
+        return "urn:microservice-platform:schema:" + Objects.requireNonNull(schemaId, "schemaId");
     }
 
     private JsonNode parseJson(String schemaId, String jsonValue) {
