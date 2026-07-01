@@ -567,14 +567,20 @@ public class ProductService {
     }
 
     /**
-     * updateProductImages operation.
+     * Synchronizes the product's image collection with the provided list of image DTOs.
+     * Removes images that are no longer present, updates existing images in place,
+     * and appends newly added images to the collection.
      *
-     * @param product input parameter
-     * @param newImageDTOs input parameter
-     * @return performs side effects defined by this operation
+     * @param product The product aggregate whose image collection will be modified.
+     * @param newImageDTOs The desired image state as a list of DTOs; if null, no changes are made.
+     * @return Modifies the product's image collection as a side effect; no value is returned.
      */
     private void updateProductImages(Product product, List<ProductImageDTO> newImageDTOs) {
-        List<ProductImage> existingImages = product.getImages();
+        if (newImageDTOs == null) return;
+        if (product.getImages() == null) {
+            product.setImages(new java.util.ArrayList<>());
+        }
+        final List<ProductImage> existingImages = product.getImages();
 
         // Remove images not present in newImageDTOs
         existingImages.removeIf(existingImage ->
@@ -601,14 +607,20 @@ public class ProductService {
     }
 
     /**
-     * updateProductAttributes operation.
+     * Synchronizes the product's attribute collection with the provided list of attribute DTOs.
+     * Removes attributes that are no longer present, updates existing attributes in place,
+     * and appends newly added attributes to the collection.
      *
-     * @param product input parameter
-     * @param newAttributeDTOs input parameter
-     * @return performs side effects defined by this operation
+     * @param product The product aggregate whose attribute collection will be modified.
+     * @param newAttributeDTOs The desired attribute state as a list of DTOs; if null, no changes are made.
+     * @return Modifies the product's attribute collection as a side effect; no value is returned.
      */
     private void updateProductAttributes(Product product, List<ProductAttributeDTO> newAttributeDTOs) {
-        List<ProductAttribute> existingAttributes = product.getAttributes();
+        if (newAttributeDTOs == null) return;
+        if (product.getAttributes() == null) {
+            product.setAttributes(new java.util.ArrayList<>());
+        }
+        final List<ProductAttribute> existingAttributes = product.getAttributes();
 
         // Remove attributes not present in newAttributeDTOs
         existingAttributes.removeIf(existingAttribute ->
@@ -634,14 +646,20 @@ public class ProductService {
     }
 
     /**
-     * updateProductPrices operation.
+     * Synchronizes the product's price history with the provided list of price DTOs.
+     * Removes price entries that are no longer present, updates existing entries in place,
+     * and appends newly added price entries to the collection.
      *
-     * @param product input parameter
-     * @param newPriceDTOs input parameter
-     * @return performs side effects defined by this operation
+     * @param product The product aggregate whose price history will be modified.
+     * @param newPriceDTOs The desired price history as a list of DTOs; if null, no changes are made.
+     * @return Modifies the product's price history as a side effect; no value is returned.
      */
     private void updateProductPrices(Product product, List<ProductPriceDTO> newPriceDTOs) {
-        List<ProductPrice> existingPrices = product.getPriceHistory();
+        if (newPriceDTOs == null) return;
+        if (product.getPriceHistory() == null) {
+            product.setPriceHistory(new java.util.ArrayList<>());
+        }
+        final List<ProductPrice> existingPrices = product.getPriceHistory();
 
         // Remove prices not present in newPriceDTOs
         existingPrices.removeIf(existingPrice ->

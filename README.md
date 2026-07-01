@@ -102,7 +102,7 @@ Redis    Kafka         PostgreSQL    MinIO         (Optional)
 - TypeScript 5.9+
 
 **Backend:**
-- Spring Boot 4.0.6
+- Spring Boot 4.1.0
 - Spring Cloud (Gateway, Feign, etc.)
 - Spring Data JPA
 - Spring Kafka
